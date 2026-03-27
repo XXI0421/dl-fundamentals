@@ -2,7 +2,7 @@ import torch
 import torch.nn as nn
 
 class KVCache:
-    def __init__(self, num_layers, batch_size, num_heads, max_seq_len, d_k, dtype=torch.float16):
+    def __init__(self, num_layers, batch_size, num_heads, max_seq_len, d_k, dtype=torch.float32):
         """
         预分配 KV Cache 内存（避免动态扩容开销）
         
