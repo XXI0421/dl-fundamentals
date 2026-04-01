@@ -44,14 +44,32 @@ def load_model(checkpoint_path='./out/chargpt/model.pt', input_file='input.txt',
     
     # 实例化并加载权重
     model = GPT(config)
-    model.load_state_dict(torch.load(checkpoint_path, map_location=device))
+    # ====================【关键修复：兼容两种保存格式】====================
+    checkpoint = torch.load(checkpoint_path, map_location=device)
+    
+    if isinstance(checkpoint, dict) and 'model_state_dict' in checkpoint:
+        # 增强版格式：{model_state_dict, stoi, itos, ...}
+        print("检测到增强版检查点格式（含完整配置）")
+        model.load_state_dict(checkpoint['model_state_dict'])
+        
+        # 如果检查点里有词表，优先使用（更可靠）
+        if 'stoi' in checkpoint and 'itos' in checkpoint:
+            stoi = checkpoint['stoi']
+            itos = checkpoint['itos']
+            print("使用检查点内嵌词表")
+    else:
+        # 原版格式：裸state_dict
+        print("检测到原版检查点格式（仅权重）")
+        model.load_state_dict(checkpoint)
+    
     model.to(device)
     model.eval()
     
-    print(f"✅ 模型加载成功: {checkpoint_path}")
+    print(f"✅ 模型加载成功")
     print(f"   参数量: {sum(p.numel() for p in model.parameters())/1e6:.2f}M")
     
     return model, stoi, itos, device
+
 
 # ====================【Step 3: 文本生成】====================
 def generate_text(model, stoi, itos, prompt, max_new_tokens=200, 

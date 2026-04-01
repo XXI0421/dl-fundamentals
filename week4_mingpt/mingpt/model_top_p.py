@@ -429,13 +429,24 @@ class GPT(nn.Module):
         return logits, loss  # 返回logits（推理用）和loss（训练用）
 
     @torch.no_grad()
-    def generate(self, idx, max_new_tokens, temperature=1.0, do_sample=False, top_k=None):
+    def generate(self, idx, max_new_tokens, temperature=1.0, do_sample=False, top_k=None, top_p=None, temperature_decay=1.0):
         """
-        Take a conditioning sequence of indices idx (LongTensor of shape (b,t)) and complete
-        the sequence max_new_tokens times, feeding the predictions back into the model each time.
-        Most likely you'll want to make sure to be in model.eval() mode of operation for this.
-        接收条件序列索引idx（形状(b,t)的长整型张量），并继续生成max_new_tokens个token，
-        每次将预测结果反馈回模型。建议在此操作前调用model.eval()。
+
+        增强版生成函数：支持Nucleus Sampling(Top-p)与动态温度衰减
+        
+        参数：
+            idx: 输入序列 (B, T)
+            max_new_tokens: 生成token数
+            temperature: 初始温度 (>1更随机，<1更保守)
+            do_sample: 是否采样（False=贪婪）
+            top_k: 只从概率前k个中采样（None=全部）
+            top_p: Nucleus采样阈值（0.9=从累积概率90%的核内采样，None=不启用）
+            temperature_decay: 温度衰减因子（每步乘以该值，<1.0逐渐降温）
+        
+        示例：
+            # 创意开头，确定结尾的故事生成
+            model.generate(idx, 100, temperature=1.2, top_p=0.9, temperature_decay=0.98)
+
         
         ====================【关键解剖点6: 生成逻辑与KV-Cache改造点】====================
         当前实现：每次生成新token时，重新计算整个序列的attention（包括历史token）
@@ -447,7 +458,7 @@ class GPT(nn.Module):
         3. 需要修改CausalSelfAttention支持past_key_values参数
         4. 修改此处循环逻辑，传入cache并更新
         """
-        for _ in range(max_new_tokens):  # 自回归循环，逐个生成token
+        for step in range(max_new_tokens):  # 自回归循环，逐个生成token
             
             # if the sequence context is growing too long we must crop it at block_size
             # 如果序列长度超过block_size，必须裁剪（只保留最后block_size个token）
@@ -462,27 +473,56 @@ class GPT(nn.Module):
             
             # pluck the logits at the final step and scale by desired temperature
             # 取最后一个时间步的logits，并应用温度缩放（控制随机性）
-            logits = logits[:, -1, :] / temperature  # (b, vocab_size)，temperature>1更随机，<1更确定
-            
+            logits = logits[:, -1, :]   # (b, vocab_size)，temperature>1更随机，<1更确定
+
+            # ====================【Day 3: 温度动态衰减】====================
+            # 计算当前步的有效温度（逐渐降低，使结尾更确定）
+            current_temp = temperature * (temperature_decay ** step)
+            # 例如：step=0, temp=1.2; step=50, temp=1.2*(0.98^50)≈0.44（趋于确定）
+            min_temp = 0.1  # 温度下限（不要低于0.1，否则数值不稳定）
+            current_temp = max(current_temp, min_temp)
+            logits = logits / current_temp
+
+            # ====================【Day 3: Top-p Nucleus采样】====================
+            # 与Top-k互斥（通常只用其一，或先用Top-k裁剪再用Top-p）
             # optionally crop the logits to only the top k options
             # 可选：Top-K采样，只保留概率最高的k个选项，其余设为负无穷
-            if top_k is not None:
-                v, _ = torch.topk(logits, top_k)  # 获取top_k的值和索引，(b, k)
-                logits[logits < v[:, [-1]]] = -float('Inf')  # 将小于第k大的所有logits设为-inf
-            
-            # apply softmax to convert logits to (normalized) probabilities
-            # 应用softmax将logits转换为归一化概率分布
-            probs = F.softmax(logits, dim=-1)  # (b, vocab_size)，每行和为1
-            
-            # either sample from the distribution or take the most likely element
-            # 要么从分布中采样（do_sample=True，引入随机性），要么取最大概率（贪婪解码）
-            if do_sample:
-                idx_next = torch.multinomial(probs, num_samples=1)  # 多项式采样：(b, 1)
-            else:
-                _, idx_next = torch.topk(probs, k=1, dim=-1)  # 贪婪解码：(b, 1)
-            
-            # append sampled index to the running sequence and continue
-            # 将采样的token索引拼接到运行序列，进入下一轮生成
-            idx = torch.cat((idx, idx_next), dim=1)  # (b, t+1)
+            if top_p is not None and 0 < top_p < 1 :
+                # 1. 计算概率分布
+                probs = F.softmax(logits, dim=-1)
 
-        return idx  # 返回完整生成序列，包括原始条件序列和新生成部分，(b, t+max_new_tokens)
+                # 2. 按概率降序排序
+                sorted_probs, sorted_indices = torch.sort(probs, descending=True, dim=-1)  # (B, vocab_size)
+
+                # 3. 计算累积概率
+                cumsum_probs = torch.cumsum(sorted_probs, dim=-1)  # (B, vocab_size)
+
+                # 4. 找到累积概率超过top_p的位置（核外）
+                # 例如top_p=0.9，保留累积90%概率的tokens，其余mask
+                sorted_indices_to_remove = cumsum_probs > top_p  # (B, vocab_size) bool矩阵   
+
+                # 5. 关键技巧：至少保留第一个token（概率最高的）
+                # 将第一个位置的移除标记设为False（保留）
+                sorted_indices_to_remove[..., 0] = False
+                
+                # 6. 映射回原始索引位置
+                # 创建与sorted_indices_to_remove相同shape的原始索引张量
+                indices_to_remove = sorted_indices[sorted_indices_to_remove]
+                
+                # 7. 将这些位置的logits设为-inf（softmax后概率为0）
+                logits[0, indices_to_remove] = float('-inf')
+            
+            if top_k is not None:
+                v, _ = torch.topk(logits, min(top_k, logits.size(-1)))
+                logits[logits < v[:, [-1]]] = float('-inf')
+        
+            # 采样或贪婪
+            probs = F.softmax(logits, dim=-1)
+            if do_sample:
+                idx_next = torch.multinomial(probs, num_samples=1)
+            else:
+                _, idx_next = torch.topk(probs, k=1, dim=-1)
+            
+            idx = torch.cat((idx, idx_next), dim=1)
+    
+        return idx
