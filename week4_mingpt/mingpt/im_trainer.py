@@ -263,7 +263,7 @@ class EnhancedTrainer(Trainer):
         # 学习率调度配置（对应Day 1中提到的warmup+cosine decay）
         C.lr_scheduler = 'cosine'  # 学习率调度类型：'cosine'或'none'
         C.warmup_iters = 2000  # 预热迭代次数（线性增长lr，防止初始梯度爆炸）
-        C.max_iters = 100000  # 总迭代次数（用于cosine decay终点计算）
+        C.max_iters = 10000  # 总迭代次数（用于cosine decay终点计算）
         C.min_lr = 1e-5  # 最小学习率（cosine decay下限，非零避免停滞）
         
         # 验证与早停配置
@@ -363,7 +363,7 @@ class EnhancedTrainer(Trainer):
                 x, y = batch
                 
                 # 前向传播（只获取loss，忽略logits）
-                logits, loss = self.model(x, y)
+                logits, loss, _ = self.model(x, y, use_cache=False)
                 
                 # 累计（使用.item()获取Python标量，避免GPU内存占用）
                 total_loss += loss.item()
@@ -500,7 +500,7 @@ class EnhancedTrainer(Trainer):
             x, y = batch
             
             # 前向传播
-            logits, self.loss = model(x, y)
+            logits, self.loss, _ = model(x, y)
             
             # 反向传播与优化
             model.zero_grad(set_to_none=True)
