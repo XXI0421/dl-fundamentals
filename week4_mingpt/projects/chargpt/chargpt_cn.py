@@ -24,7 +24,7 @@ def get_config():
     C.system = CN()
     C.system.seed = 3407
     C.system.work_dir = './out/chargpt'
-    C.system.model_name = 'im_model'  # 模型名称，用于保存文件
+    C.system.model_name = 'cn_model'  # 模型名称，用于保存文件
 
     # data
     C.data = CharDataset.get_default_config()

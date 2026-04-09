@@ -26,7 +26,7 @@ def rebuild_vocab(input_file='input_cn.txt'):
     return stoi, itos, len(chars)
 
 
-def load_model(checkpoint_path='./out/chargpt/im_model.pt', input_file='input_cn.txt', device='auto'):
+def load_model(checkpoint_path='./out/chargpt/cn_model.pt', input_file='input_cn.txt', device='auto'):
     """加载中文模型并重建词表"""
     if device == 'auto':
         device = 'cuda' if torch.cuda.is_available() else 'cpu'
