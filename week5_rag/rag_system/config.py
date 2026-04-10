@@ -10,8 +10,8 @@ HNSW_EF_CONSTRUCTION = 200
 HNSW_EF_SEARCH = 100  # 甜点配置：95.7%召回，0.3ms
 
 # 分块参数（关键！影响检索质量）
-CHUNK_SIZE = 512      # 每个块 token 数（约 300-400 汉字/英文词）
-CHUNK_OVERLAP = 128   # 块间重叠，避免边界切断关键信息
+CHUNK_SIZE = 150      # 每个块 token 数（约 300-400 汉字/英文词）
+CHUNK_OVERLAP = 30   # 块间重叠，避免边界切断关键信息
 
 # 检索配置
 TOP_K_RETRIEVE = 50   # Bi-Encoder 召回数

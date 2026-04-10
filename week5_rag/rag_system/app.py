@@ -48,23 +48,29 @@ with st.sidebar:
                 temp_dir = "./temp_uploads"
                 os.makedirs(temp_dir, exist_ok=True)
                 
+                total_chunks = 0
                 for file in uploaded_files:
                     file_path = os.path.join(temp_dir, file.name)
                     with open(file_path, "wb") as f:
                         f.write(file.getvalue())
-                    ingestor.ingest_file(file_path)
+                    chunks_count = ingestor.ingest_file(file_path)
+                    total_chunks += chunks_count
                 
-                # 构建索引
-                ingestor.build_index(INDEX_DIR)
-                
-                # 加载到 session state
-                st.session_state.retriever = AdvancedRetriever(INDEX_DIR)
-                st.session_state.index_built = True
-                
-                st.success(f"✅ 索引构建完成！共 {len(ingestor.chunks)} 个文本块")
+                if total_chunks == 0:
+                    st.error("❌ 没有成功处理任何文档，请检查文件格式")
+                else:
+                    # 构建索引
+                    ingestor.build_index(INDEX_DIR)
+                    
+                    # 加载到 session state
+                    st.session_state.retriever = AdvancedRetriever(INDEX_DIR)
+                    st.session_state.index_built = True
+                    
+                    st.success(f"✅ 索引构建完成！共 {total_chunks} 个文本块")
                 
             except Exception as e:
                 st.error(f"❌ 构建失败: {str(e)}")
+                st.session_state.index_built = False
     
     st.divider()
     
@@ -106,22 +112,28 @@ if clear_btn:
 # ============= 检索与展示 =============
 if search_btn and query:
     with st.spinner("正在检索..."):
-        retriever = st.session_state.retriever
-        
-        # 执行检索
-        results = retriever.retrieve(
-            query, 
-            use_hyde=use_hyde, 
-            use_rerank=use_rerank,
-            top_k=top_k
-        )
-        
-        # 记录历史
-        st.session_state.chat_history.append({
-            "query": query,
-            "results": results,
-            "config": {"hyde": use_hyde, "rerank": use_rerank, "k": top_k}
-        })
+        try:
+            retriever = st.session_state.retriever
+            
+            # 执行检索
+            results = retriever.retrieve(
+                query, 
+                use_hyde=use_hyde, 
+                use_rerank=use_rerank,
+                top_k=top_k
+            )
+            
+            if not results:
+                st.warning("⚠️ 未找到相关结果，请尝试调整查询词或关闭 HyDE/Rerank")
+            else:
+                # 记录历史
+                st.session_state.chat_history.append({
+                    "query": query,
+                    "results": results,
+                    "config": {"hyde": use_hyde, "rerank": use_rerank, "k": top_k}
+                })
+        except Exception as e:
+            st.error(f"❌ 检索失败: {str(e)}")
 
 # 展示结果（保留历史）
 for i, item in enumerate(reversed(st.session_state.chat_history)):
