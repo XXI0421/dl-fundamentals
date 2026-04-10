@@ -10,6 +10,7 @@
 | [Week 2](./week2_transformer/README.md) | Transformer注意力 | Self-Attention、Multi-Head | ⭐⭐ |
 | [Week 3](./week3_improved/README.md) | Transformer改进 | KV-Cache、RoPE、量化 | ⭐⭐⭐ |
 | [Week 4](./week4_mingpt/README.md) | 字符级语言模型 | GPT、LLaMA优化、生成 | ⭐⭐⭐ |
+| [Week 5](./week5_rag/README.md) | RAG检索系统 | HNSW、HyDE、Cross-Encoder | ⭐⭐⭐⭐ |
 
 ## 🗺️ 学习路径
 
@@ -22,6 +23,8 @@ Week 3: 现代优化
     ↓ 学习KV-Cache、RoPE等
 Week 4: 完整项目
     ↓ 实现字符级GPT
+Week 5: RAG系统
+    ↓ 构建智能检索和问答系统
 ```
 
 ## 📁 项目结构
@@ -51,6 +54,16 @@ dl_fundamentals/
 │   │   └── im_model.py    # LLaMA风格
 │   ├── projects/chargpt/  # 训练脚本
 │   ├── forecast*.py       # 交互脚本
+│   └── README.md
+│
+├── week5_rag/              # RAG检索系统
+│   ├── rag_system/         # 主系统
+│   │   ├── app.py          # Streamlit前端
+│   │   ├── ingest.py       # 文档摄取器
+│   │   ├── retrieve.py     # 检索引擎
+│   │   └── config.py       # 配置管理
+│   ├── advanced_rag.py     # 高级RAG示例
+│   ├── vector_db_benchmark.py # 向量数据库基准测试
 │   └── README.md
 │
 └── README.md              # 本文件
@@ -86,6 +99,9 @@ cd week3_improved && python kv_cache.py
 
 # Week 4: 训练GPT
 cd week4_mingpt && python projects/chargpt/chargpt_im.py
+
+# Week 5: 启动RAG系统
+cd week5_rag/rag_system && streamlit run app.py
 ```
 
 ## 📊 各Week核心成果
@@ -110,6 +126,15 @@ cd week4_mingpt && python projects/chargpt/chargpt_im.py
 - ✅ LLaMA风格优化(RMSNorm+RoPE+SwiGLU+KV-Cache)
 - ✅ 交互式文本生成
 
+### Week 5: RAG检索系统
+- ✅ 完整的RAG系统实现
+- ✅ HNSW高效向量检索
+- ✅ HyDE查询增强(支持Kimi API)
+- ✅ Cross-Encoder重排序
+- ✅ 智能文档分块
+- ✅ 基于检索结果的回答生成
+- ✅ Streamlit用户友好界面
+
 ## 🔧 环境要求
 
 | 组件 | 版本 | 用途 |
@@ -119,10 +144,15 @@ cd week4_mingpt && python projects/chargpt/chargpt_im.py
 | CUDA | 12.4 | GPU加速(可选) |
 | transformers | 4.40+ | Week 3量化实战 |
 | bitsandbytes | 0.43+ | Week 3量化实战 |
+| streamlit | 1.30+ | Week 5前端界面 |
+| faiss-cpu | 1.8+ | Week 5向量检索 |
+| sentence-transformers | 2.7+ | Week 5嵌入模型 |
+| pypdf | 4.0+ | Week 5 PDF解析 |
+| requests | 2.30+ | Week 5 Kimi API调用 |
 
 ## 💡 学习建议
 
-1. **按顺序学习**: Week 1→2→3→4，循序渐进
+1. **按顺序学习**: Week 1→2→3→4→5，循序渐进
 2. **动手实践**: 每个模块都有可运行的代码
 3. **阅读源码**: 理解实现细节比调API更重要
 4. **修改实验**: 尝试修改参数、添加功能
@@ -141,6 +171,7 @@ cd week4_mingpt && python projects/chargpt/chargpt_im.py
 
 ## 📝 更新日志
 
+- **2026.04.10**: Week 5 完成，实现RAG检索系统
 - **2026.04.02**: Week 4 完成，实现LLaMA风格优化
 - **2026.03.29**: Week 3 完成，添加KV-Cache和RoPE
 - **2026.03.26**: Week 2 完成，实现Transformer组件

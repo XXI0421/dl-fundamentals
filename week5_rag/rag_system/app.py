@@ -8,6 +8,7 @@ sys.path.append(os.path.dirname(os.path.abspath(__file__)))
 
 from ingest import DocumentIngestor
 from retrieve import AdvancedRetriever
+from config import KIMI_API_KEY, ENABLE_KIMI_API
 
 # ============= 页面配置 =============
 st.set_page_config(
@@ -83,6 +84,29 @@ with st.sidebar:
     top_k = st.slider("返回结果数 (Top-K)", 1, 10, 5)
     
     st.divider()
+    
+    st.markdown("### 3. Kimi API 配置")
+    kimi_api_key = st.text_input(
+        "Kimi API Key", 
+        value=KIMI_API_KEY if KIMI_API_KEY != 'your_kimi_api_key_here' else '',
+        type="password",
+        help="输入你的 Kimi API Key 以启用更强大的 HyDE 增强"
+    )
+    
+    enable_kimi = st.toggle("启用 Kimi API", value=ENABLE_KIMI_API,
+                         help="使用 Kimi API 进行 HyDE 增强，生成更准确的虚拟文档")
+    
+    # 保存 Kimi API 配置到环境变量
+    if kimi_api_key:
+        os.environ['KIMI_API_KEY'] = kimi_api_key
+    os.environ['ENABLE_KIMI_API'] = str(enable_kimi)
+    
+    if enable_kimi and not kimi_api_key:
+        st.warning("⚠️ 请输入 Kimi API Key 以启用 Kimi API")
+    elif enable_kimi:
+        st.info("✅ Kimi API 已启用，将用于 HyDE 增强")
+    
+    st.divider()
     st.caption(f"⏱️ 当前时间: {datetime.now().strftime('%Y-%m-%d %H:%M')}")
     if st.session_state.index_built:
         st.success("🟢 系统就绪")
@@ -123,6 +147,9 @@ if search_btn and query:
                 top_k=top_k
             )
             
+            # 生成回答
+            answer = retriever.generate_answer(query, results)
+            
             if not results:
                 st.warning("⚠️ 未找到相关结果，请尝试调整查询词或关闭 HyDE/Rerank")
             else:
@@ -130,7 +157,8 @@ if search_btn and query:
                 st.session_state.chat_history.append({
                     "query": query,
                     "results": results,
-                    "config": {"hyde": use_hyde, "rerank": use_rerank, "k": top_k}
+                    "answer": answer,
+                    "config": {"hyde": use_hyde, "rerank": use_rerank, "k": top_k, "kimi_enabled": enable_kimi}
                 })
         except Exception as e:
             st.error(f"❌ 检索失败: {str(e)}")
@@ -146,9 +174,23 @@ for i, item in enumerate(reversed(st.session_state.chat_history)):
             config_badges.append("HyDE")
         if item['config']['rerank']:
             config_badges.append("Rerank")
+        if item['config'].get('kimi_enabled', False):
+            config_badges.append("Kimi API")
         st.caption(" | ".join(config_badges))
         
+        # 生成的回答
+        if 'answer' in item:
+            st.markdown("**A:**")
+            kimi_enabled = item['config'].get('kimi_enabled', False)
+            if kimi_enabled:
+                # Kimi API 生成的回答，使用蓝色框
+                st.info(item['answer'])
+            else:
+                # 回退回答，使用普通文本
+                st.write(item['answer'])
+        
         # 结果展示
+        st.markdown("**检索结果:**")
         for j, doc in enumerate(item['results']):
             score = doc.get('rerank_score', doc['score'])
             source = doc['source']

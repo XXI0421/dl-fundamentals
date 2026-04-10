@@ -16,3 +16,11 @@ CHUNK_OVERLAP = 30   # 块间重叠，避免边界切断关键信息
 # 检索配置
 TOP_K_RETRIEVE = 50   # Bi-Encoder 召回数
 TOP_K_RERANK = 10     # Cross-Encoder 精排后返回数
+
+# Kimi API 配置
+KIMI_API_KEY = os.getenv('KIMI_API_KEY', 'your_kimi_api_key_here')
+KIMI_API_URL = 'https://api.moonshot.cn/v1/chat/completions'
+KIMI_MODEL = 'moonshot-v1-8k'
+
+# 启用 Kimi API（默认关闭，需要配置 API key 后开启）
+ENABLE_KIMI_API = False

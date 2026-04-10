@@ -107,11 +107,45 @@ class DocumentIngestor:
         chinese_chars = sum(1 for c in text if '\u4e00' <= c <= '\u9fff')
         return chinese_chars > len(text) * 0.3
     
-    def _chunk_chinese(self, text: str, source: str) -> List[Tuple[str, str]]:
+    def get_optimal_chunk_size(self, text: str, file_type: str) -> Tuple[int, int]:
+        """根据文件类型和内容动态计算最优分块大小"""
+        # 基础分块大小
+        base_chunk_size = 150
+        base_overlap = 30
+        
+        # 根据文件类型调整
+        if file_type == '.pdf':
+            # PDF 通常包含更多格式化内容，使用稍大的分块
+            base_chunk_size = 200
+            base_overlap = 40
+        elif file_type in ['.md', '.markdown']:
+            # Markdown 有明确的结构，使用中等分块
+            base_chunk_size = 180
+            base_overlap = 35
+        elif file_type == '.txt':
+            # 纯文本，使用标准分块
+            base_chunk_size = 150
+            base_overlap = 30
+        
+        # 根据文本长度调整
+        text_length = len(text)
+        if text_length > 10000:
+            # 长文本使用更大的分块
+            base_chunk_size = min(base_chunk_size * 1.5, 300)
+        elif text_length < 1000:
+            # 短文本使用更小的分块
+            base_chunk_size = max(base_chunk_size * 0.7, 100)
+        
+        # 根据语言调整
+        if self._is_chinese(text):
+            # 中文每个字符更短，使用稍大的分块
+            base_chunk_size = int(base_chunk_size * 1.2)
+        
+        return int(base_chunk_size), int(base_overlap * (base_chunk_size / 150))
+    
+    def _chunk_chinese(self, text: str, source: str, chunk_size: int, overlap: int) -> List[Tuple[str, str]]:
         """中文文本分块：按字符分块，保留语义完整性"""
         chunks = []
-        chunk_size = self.chunk_size
-        overlap = self.overlap
         
         for i in range(0, len(text), chunk_size - overlap):
             chunk_text = text[i:i + chunk_size]
@@ -123,12 +157,10 @@ class DocumentIngestor:
         
         return chunks
     
-    def _chunk_english(self, text: str, source: str) -> List[Tuple[str, str]]:
+    def _chunk_english(self, text: str, source: str, chunk_size: int, overlap: int) -> List[Tuple[str, str]]:
         """英文文本分块：按单词分块"""
         words = text.split()
         chunks = []
-        chunk_size = self.chunk_size
-        overlap = self.overlap
         
         for i in range(0, len(words), chunk_size - overlap):
             chunk_words = words[i:i + chunk_size]
@@ -141,15 +173,19 @@ class DocumentIngestor:
         
         return chunks
     
-    def chunk_text(self, text: str, source: str) -> List[Tuple[str, str]]:
+    def chunk_text(self, text: str, source: str, file_type: str = '.txt') -> List[Tuple[str, str]]:
         """
-        智能分块：自动检测语言并选择合适的分块策略
+        智能分块：根据文件类型和内容动态调整分块策略
         关键：重叠区域避免关键信息被切分在边界
         """
+        # 动态计算最优分块大小
+        chunk_size, overlap = self.get_optimal_chunk_size(text, file_type)
+        print(f"Using chunk size: {chunk_size}, overlap: {overlap} for {file_type}")
+        
         if self._is_chinese(text):
-            return self._chunk_chinese(text, source)
+            return self._chunk_chinese(text, source, chunk_size, overlap)
         else:
-            return self._chunk_english(text, source)
+            return self._chunk_english(text, source, chunk_size, overlap)
     
     def ingest_file(self, filepath: str) -> int:
         """处理单个文件，返回生成的块数"""
@@ -169,7 +205,7 @@ class DocumentIngestor:
             # 分块
             total_chunks = 0
             for text, source in raw_docs:
-                chunks = self.chunk_text(text, source)
+                chunks = self.chunk_text(text, source, file_type=ext)
                 for chunk_text, chunk_id in chunks:
                     self.chunks.append(chunk_text)
                     self.sources.append(chunk_id)
