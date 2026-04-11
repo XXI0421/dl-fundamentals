@@ -40,7 +40,7 @@ def test_day3_scenario_1():
     
     query = """
     请完成以下任务：
-    1. 从知识库检索 "ReAgent" 相关的定义和描述（top_k=3）
+    1. 从知识库检索 "ReAct" 相关的定义和描述（top_k=3）
     2. 如果检索到相关内容，统计描述中出现了多少次 "Agent" 这个词（使用 Python 代码计算）
     3. 给出最终总结：ReAct 是什么？出现的 Agent 次数是多少？
     """

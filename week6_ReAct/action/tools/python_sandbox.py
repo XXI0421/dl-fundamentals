@@ -30,14 +30,24 @@ class SecureSandbox:
         self.allowed_modules.extend(self.chart_libs)
         
         # 危险代码模式（正则匹配）
+        # 使用更严格的模式检测 import/from 语句，覆盖变体如 "import os as x"
         self.forbidden_patterns = [
-            r'import\s+os\b', r'import\s+sys\b', r'import\s+subprocess\b',
-            r'import\s+socket\b', r'import\s+requests\b', r'import\s+urllib',
-            r'exec\s*\(', r'eval\s*\(', r'__import__\s*\(', 
+            # 危险模块导入（覆盖 import/from 语句的各种变体）
+            r'^\s*(import|from)\s+(os|sys|subprocess|socket|requests|urllib)',
+            r'\bimport\s+os\b', r'\bimport\s+sys\b', r'\bimport\s+subprocess\b',
+            r'\bimport\s+socket\b', r'\bimport\s+requests\b', r'\bimport\s+urllib',
+            # 危险内置函数
+            r'exec\s*\(', r'eval\s*\(', r'__import__\s*\(',
+            r'\b__builtins__\b', r'\b__globals__\b', r'\b__locals__\b',
+            # 文件和系统操作
             r'open\s*\(', r'file\s*\(', r'subprocess\.',
             r'os\.system', r'os\.popen', r'os\.remove', r'os\.unlink',
-            r'shutil\.rmtree', r'wget\b', r'curl\b', r'rm\s+-rf',
-            r'>\s*/etc/', r'>\s*/proc/', r'>\s*/sys/'
+            r'os\.chmod', r'os\.chown', r'os\.mkdir', r'os\.rmdir',
+            r'os\.rename', r'os\.replace', r'os\.symlink', r'os\.link',
+            r'shutil\.rmtree', r'shutil\.move', r'shutil\.copy', r'shutil\.copytree',
+            # 网络和命令执行
+            r'socket\.', r'requests\.', r'urllib\.', r'wget\b', r'curl\b',
+            r'rm\s+-rf', r'>\s*/etc/', r'>\s*/proc/', r'>\s*/sys/'
         ]
         import re
         self.forbidden_regex = [re.compile(p, re.IGNORECASE) for p in self.forbidden_patterns]
@@ -69,23 +79,23 @@ class SecureSandbox:
         
         # 构建安全头（注入限制）
         header = """
-                import sys
-                import os
-                import builtins
-                import datetime
-                sys.setrecursionlimit(1000)
-                sys.path = [p for p in sys.path if 'site-packages' not in p]
+import sys
+import os
+import builtins
+import datetime
+sys.setrecursionlimit(1000)
+sys.path = [p for p in sys.path if 'site-packages' not in p]
 
-                # 禁用文件操作（简单粗暴但安全）
-                def _blocked_open(*args, **kwargs):
-                    raise PermissionError("文件操作已被禁止")
+# 禁用文件操作（简单粗暴但安全）
+def _blocked_open(*args, **kwargs):
+    raise PermissionError("文件操作已被禁止")
 
-                builtins.open = _blocked_open
+builtins.open = _blocked_open
 
-                # 监控资源
-                import tracemalloc
-                tracemalloc.start()
-                """
+# 监控资源
+import tracemalloc
+tracemalloc.start()
+"""
         
         script_path = temp_dir / "script.py"
         script_path.write_text(header + "\n" + code, encoding='utf-8')
