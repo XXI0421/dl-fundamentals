@@ -45,6 +45,9 @@ class AdvancedRetriever:
             # 加载索引
             self.index = faiss.read_index(f"{index_path}/docs.index")
             
+            # 获取索引维度
+            self.dim = self.index.d
+            
             # 加载元数据（兼容新旧两种格式）
             with open(f"{index_path}/metadata.json", 'r', encoding='utf-8') as f:
                 meta = json.load(f)
