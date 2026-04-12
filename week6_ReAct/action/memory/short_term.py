@@ -12,18 +12,20 @@ class Message:
     name: Optional[str] = None
 
 class ConversationBufferWindowMemory:
-    def __init__(self, k: int = 3):
+    def __init__(self, k: int = 3, content_limit: int = 500, tool_result_limit: int = 300):
         self.k = k
+        self.content_limit = content_limit
+        self.tool_result_limit = tool_result_limit
         self.messages: deque = deque(maxlen=k * 2)
     
     def add_user(self, content: str):
-        self.messages.append(Message(role="user", content=content[:500]))
+        self.messages.append(Message(role="user", content=content[:self.content_limit]))
     
     def add_assistant(self, content: Optional[str] = None, tool_calls: Optional[List] = None):
-        self.messages.append(Message(role="assistant", content=content[:500] if content else None, tool_calls=tool_calls))
+        self.messages.append(Message(role="assistant", content=content[:self.content_limit] if content else None, tool_calls=tool_calls))
     
     def add_tool_result(self, tool_call_id: str, name: str, content: str):
-        self.messages.append(Message(role="tool", tool_call_id=tool_call_id, name=name, content=content[:300]))
+        self.messages.append(Message(role="tool", tool_call_id=tool_call_id, name=name, content=content[:self.tool_result_limit]))
     
     def get_messages(self) -> List[Dict[str, Any]]:
         result = []
@@ -38,8 +40,8 @@ class ConversationBufferWindowMemory:
         return result
 
 class ConversationSummaryMemory(ConversationBufferWindowMemory):
-    def __init__(self, k: int = 3, summarizer_llm=None):
-        super().__init__(k=k)
+    def __init__(self, k: int = 3, summarizer_llm=None, content_limit: int = 500, tool_result_limit: int = 300):
+        super().__init__(k=k, content_limit=content_limit, tool_result_limit=tool_result_limit)
         self.summarizer = summarizer_llm
         self.summary: str = ""
         self.conversations: List[Dict] = []
@@ -47,7 +49,7 @@ class ConversationSummaryMemory(ConversationBufferWindowMemory):
     
     def add_user(self, content: str):
         super().add_user(content)
-        self.current_conversation = {"user": content[:500], "agent_response": "", "tools_used": []}
+        self.current_conversation = {"user": content[:self.content_limit], "agent_response": "", "tools_used": []}
     
     def add_assistant(self, content: Optional[str] = None, tool_calls: Optional[List] = None):
         super().add_assistant(content=content, tool_calls=tool_calls)
@@ -58,7 +60,7 @@ class ConversationSummaryMemory(ConversationBufferWindowMemory):
         super().add_tool_result(tool_call_id, name, content)
         if "tool_results" not in self.current_conversation:
             self.current_conversation["tool_results"] = []
-        self.current_conversation["tool_results"].append({name: content[:100]})
+        self.current_conversation["tool_results"].append({name: content[:self.tool_result_limit]})
     
     def add_conversation(self, conversation: Dict[str, str]):
         self.conversations.append(conversation)

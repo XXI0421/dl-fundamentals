@@ -32,6 +32,7 @@ class ReActAgentV2:
         
         final_answer = ""
         tools_used = []
+        last_tool_calls = None  # 记录最后一次工具调用
         
         for i in range(self.max_iterations):
             print(f"\n--- 第 {i+1} 轮 ---")
@@ -55,6 +56,7 @@ class ReActAgentV2:
             
             tool_calls = response["tool_calls"]
             tools_used = [tc["name"] for tc in tool_calls]
+            last_tool_calls = tool_calls  # 记录当前工具调用
             print(f"🔧 调用: {tools_used}")
             
             assistant_msg = {
@@ -96,7 +98,25 @@ class ReActAgentV2:
                 ))
         
         else:
-            final_answer = "达到最大迭代次数"
+            # 达到最大迭代次数
+            # 检查是否有未完成的工具调用（最后一次迭代执行了工具调用但未总结）
+            if last_tool_calls:
+                print("\n--- 最后总结 ---")
+                # 强制进行一次总结调用（不调用工具）
+                response = self.llm.chat_completion(
+                    messages=messages,
+                    tools=self.tools.get_schemas(),
+                    tool_choice="none",  # 强制不调用工具
+                    temperature=0.2
+                )
+                if response.get("content"):
+                    final_answer = response["content"]
+                    print(f"✅ 总结回答: {final_answer[:100]}...")
+                else:
+                    final_answer = "达到最大迭代次数，任务未完成"
+            else:
+                final_answer = "达到最大迭代次数，任务未完成"
+            
             self.memory.add_assistant(content=final_answer)
         
         self.memory.add_conversation({
@@ -124,8 +144,7 @@ class ReActAgentV2:
 
         messages = [{"role": "system", "content": system_content}]
         
-        # 只传最近1轮历史对话（用于上下文理解），而非全部
-        recent_history = self.memory.get_messages()[-4:]  # 最多2轮对话
+        recent_history = self.memory.get_messages()[-4:]
         if recent_history:
             messages.extend(recent_history)
             print(f"[上下文] {len(recent_history)} 条消息")
