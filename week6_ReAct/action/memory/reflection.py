@@ -1,9 +1,9 @@
 import json
 import re
-from typing import List, Dict
+from typing import List, Dict, Optional
 from dataclasses import dataclass
 from llm_client import KimiClient
-from memory.long_term import LongTermMemory
+from memory.long_term import LongTermMemory, get_long_term_memory
 
 @dataclass
 class ReflectionResult:
@@ -15,9 +15,10 @@ class ReflectionResult:
 class ReflectionEngine:
     """记忆反思引擎：从对话中提取永久记忆"""
     
-    def __init__(self, llm_client: KimiClient):
+    def __init__(self, llm_client: KimiClient, session_id: Optional[str] = None):
         self.llm = llm_client
-        self.ltm = LongTermMemory()
+        self.session_id = session_id
+        self.ltm = get_long_term_memory(session_id=session_id)
     
     def reflect(self, 
                 conversation_history: List[Dict], 

@@ -8,13 +8,24 @@ import faiss
 from sentence_transformers import SentenceTransformer
 
 class LongTermMemory:
-    """跨会话持久记忆（基于 FAISS）"""
+    """会话级跨会话持久记忆（基于 FAISS）
+    
+    支持会话隔离：每个会话有独立的记忆存储
+    """
     
     def __init__(self, 
+                 session_id: Optional[str] = None,
                  index_path: str = "./long_term_memory",
                  embedding_model: str = "BAAI/bge-base-zh"):
-        self.index_path = Path(index_path)
-        self.index_path.mkdir(exist_ok=True)
+        """
+        Args:
+            session_id: 会话ID，为None时创建新会话
+            index_path: 索引存储根目录
+            embedding_model: 嵌入模型名称
+        """
+        self.session_id = session_id or self._generate_session_id()
+        self.index_path = Path(index_path) / self.session_id
+        self.index_path.mkdir(parents=True, exist_ok=True)
         
         # 加载或创建索引
         self.dim = 768  # bge-base-zh 维度
@@ -26,19 +37,26 @@ class LongTermMemory:
         # 元数据存储（事实文本 + 时间戳 + 重要性）
         self.facts: Dict[str, Dict] = {}  # id -> {text, category, timestamp, importance}
         self._load_metadata()
+        
+        print(f"[LTM] 会话 {self.session_id} 初始化完成")
+    
+    def _generate_session_id(self) -> str:
+        """生成唯一会话ID"""
+        timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+        return f"session_{timestamp}_{hashlib.md5(timestamp.encode()).hexdigest()[:8]}"
     
     def _init_index(self):
         """初始化 FAISS 索引"""
         index_file = self.index_path / "facts.index"
         if index_file.exists():
             self.index = faiss.read_index(str(index_file))
-            print(f"[LTM] 加载长期记忆索引，包含 {self.index.ntotal} 条事实")
+            print(f"[LTM] 加载会话 {self.session_id} 的长期记忆索引，包含 {self.index.ntotal} 条事实")
         else:
             # HNSW 索引，适合小规模高维向量（<10万条）
             self.index = faiss.IndexHNSWFlat(self.dim, 16)
             self.index.hnsw.efConstruction = 40
             self.index.hnsw.efSearch = 16
-            print("[LTM] 创建新的长期记忆索引")
+            print(f"[LTM] 为会话 {self.session_id} 创建新的长期记忆索引")
     
     def _load_metadata(self):
         """加载事实元数据"""
@@ -161,11 +179,14 @@ class LongTermMemory:
     
     def get_user_profile(self) -> Dict[str, List[str]]:
         """获取用户画像（按类别聚合）"""
-        profile = {"preference": [], "fact": [], "relationship": []}
+        profile = {"preference": [], "fact": [], "relationship": [], "identity": []}
         for meta in self.facts.values():
             cat = meta["category"]
             if cat in profile:
                 profile[cat].append(meta["text"])
+            else:
+                # 未知类别添加到 fact 中
+                profile["fact"].append(meta["text"])
         return profile
 
     def delete_fact(self, fact_id: str):
@@ -174,13 +195,45 @@ class LongTermMemory:
             self.facts[fact_id]["importance"] = 0
             self._save_metadata()
             print(f"[LTM] 删除事实: {fact_id}")
+    
+    def clear_all(self):
+        """清空当前会话的所有长期记忆"""
+        self.index.reset()
+        self.facts = {}
+        self._save_metadata()
+        print(f"[LTM] 已清空会话 {self.session_id} 的所有记忆")
 
-# 全局单例（跨会话共享）
-_ltm_instance = None
+# 会话级存储（支持多会话）
+_sessions: Dict[str, LongTermMemory] = {}
 
-def get_long_term_memory() -> LongTermMemory:
-    """获取长期记忆单例"""
-    global _ltm_instance
-    if _ltm_instance is None:
-        _ltm_instance = LongTermMemory()
-    return _ltm_instance
+def get_long_term_memory(session_id: Optional[str] = None) -> LongTermMemory:
+    """
+    获取或创建长期记忆实例
+    
+    Args:
+        session_id: 会话ID，为None时创建新会话
+    
+    Returns:
+        LongTermMemory实例
+    """
+    if session_id is None:
+        # 创建新会话
+        ltm = LongTermMemory()
+        _sessions[ltm.session_id] = ltm
+        return ltm
+    
+    # 尝试加载已有会话
+    if session_id in _sessions:
+        return _sessions[session_id]
+    
+    # 检查磁盘上是否存在该会话
+    ltm = LongTermMemory(session_id=session_id)
+    _sessions[session_id] = ltm
+    return ltm
+
+def list_sessions(root_path: str = "./long_term_memory") -> List[str]:
+    """列出所有已保存的会话"""
+    path = Path(root_path)
+    if not path.exists():
+        return []
+    return [p.name for p in path.iterdir() if p.is_dir() and p.name.startswith("session_")]

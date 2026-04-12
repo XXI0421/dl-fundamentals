@@ -1,13 +1,14 @@
 """
 ReAct Agent V3 - 集成短期记忆、长期记忆和反思引擎
 优化版本：减少token消耗，提高准确性
+支持会话隔离：每个会话有独立的长期记忆存储
 """
 import json
 from typing import List, Dict, Any, Optional
 from dataclasses import dataclass
 from llm_client import KimiClient
 from memory.short_term import ConversationSummaryMemory
-from memory.long_term import get_long_term_memory, LongTermMemory
+from memory.long_term import get_long_term_memory, LongTermMemory, list_sessions
 from memory.reflection import ReflectionEngine, ReflectionResult
 
 @dataclass
@@ -21,7 +22,7 @@ class ReActAgentV3:
     """
     集成三种记忆的 ReAct Agent：
     - 短期记忆：会话内上下文（滑动窗口）
-    - 长期记忆：跨会话持久存储（FAISS向量检索）
+    - 长期记忆：跨会话持久存储（FAISS向量检索），支持会话隔离
     - 反思引擎：自动提取并保存长期记忆
     
     优化特性：
@@ -29,6 +30,7 @@ class ReActAgentV3:
     2. 可信度阈值过滤低质量匹配
     3. 事实冲突检测避免错误信息
     4. 限制记忆数量和长度减少token消耗
+    5. 会话隔离：新会话重置长期记忆，旧会话可恢复
     """
     
     def __init__(
@@ -40,7 +42,8 @@ class ReActAgentV3:
         use_long_term: bool = True,
         use_reflection: bool = True,
         ltm_threshold: float = 0.3,  # 可信度阈值
-        ltm_max_facts: int = 3       # 最大返回记忆数量
+        ltm_max_facts: int = 3,       # 最大返回记忆数量
+        session_id: Optional[str] = None  # 会话ID，为None时创建新会话
     ):
         self.llm = llm_client
         self.tools = tool_registry
@@ -49,6 +52,7 @@ class ReActAgentV3:
         self.use_reflection = use_reflection
         self.ltm_threshold = ltm_threshold
         self.ltm_max_facts = ltm_max_facts
+        self.session_id = session_id
         
         # 短期记忆（会话内）
         self.short_memory = ConversationSummaryMemory(k=memory_k)
@@ -58,7 +62,7 @@ class ReActAgentV3:
         
         # 反思引擎
         if use_reflection:
-            self.reflection = ReflectionEngine(llm_client)
+            self.reflection = ReflectionEngine(llm_client, session_id=session_id)
         
         self.trajectory: List[Step] = []
         self.current_dialog: List[Dict] = []  # 用于反思的完整对话
@@ -69,7 +73,10 @@ class ReActAgentV3:
     def _lazy_init_long_memory(self):
         """延迟初始化长期记忆"""
         if self.use_long_term and self.long_memory is None:
-            self.long_memory = get_long_term_memory()
+            self.long_memory = get_long_term_memory(session_id=self.session_id)
+            # 更新会话ID（如果是新创建的）
+            if self.session_id is None:
+                self.session_id = self.long_memory.session_id
     
     def set_long_term_enabled(self, enabled: bool):
         """动态开关长期记忆"""
@@ -78,11 +85,56 @@ class ReActAgentV3:
             self._lazy_init_long_memory()
         print(f"[LTM] 长期记忆已{'开启' if enabled else '关闭'}")
     
+    def get_session_id(self) -> str:
+        """获取当前会话ID"""
+        if self.session_id is None and self.long_memory:
+            return self.long_memory.session_id
+        return self.session_id or "未初始化"
+    
+    def switch_session(self, session_id: str):
+        """切换到指定会话"""
+        self.session_id = session_id
+        self.long_memory = None
+        self.short_memory.clear()
+        self.current_dialog = []
+        self.trajectory = []
+        self.saved_facts_cache = set()
+        # 重新初始化反思引擎以绑定到新会话
+        if self.use_reflection:
+            self.reflection = ReflectionEngine(self.llm, session_id=session_id)
+        if self.use_long_term:
+            self._lazy_init_long_memory()
+        print(f"[会话] 已切换到会话: {session_id}")
+    
+    def new_session(self):
+        """创建新会话（重置所有记忆）"""
+        self.session_id = None
+        self.long_memory = None
+        self.short_memory.clear()
+        self.current_dialog = []
+        self.trajectory = []
+        self.saved_facts_cache = set()
+        # 重新初始化反思引擎（不指定session_id，会自动生成新的）
+        if self.use_reflection:
+            self.reflection = ReflectionEngine(self.llm, session_id=None)
+        if self.use_long_term:
+            self._lazy_init_long_memory()
+        print(f"[会话] 已创建新会话: {self.session_id}")
+    
+    def list_available_sessions(self) -> List[str]:
+        """列出所有可用会话"""
+        return list_sessions()
+    
     def run(self, query: str) -> str:
         """主循环"""
         # 检查用户是否想要开关长期记忆
         if self._check_memory_switch(query):
             return "已按您的要求调整长期记忆设置。"
+        
+        # 检查用户是否想要切换会话
+        session_cmd = self._check_session_command(query)
+        if session_cmd:
+            return session_cmd
         
         self.short_memory.add_user(query)
         self.current_dialog.append({"role": "user", "content": query})
@@ -203,6 +255,42 @@ class ReActAgentV3:
             return True
         return False
     
+    def _check_session_command(self, query: str) -> Optional[str]:
+        """检查用户是否想要进行会话操作"""
+        query_lower = query.lower()
+        
+        if "新会话" in query_lower or "新建会话" in query_lower or "重置会话" in query_lower:
+            self.new_session()
+            return f"已创建新会话，会话ID: {self.session_id}"
+        
+        if "切换会话" in query_lower:
+            # 尝试提取会话ID
+            import re
+            match = re.search(r'切换会话\s*(\S+)', query)
+            if match:
+                target_session = match.group(1)
+                sessions = self.list_available_sessions()
+                if target_session in sessions:
+                    self.switch_session(target_session)
+                    return f"已切换到会话: {target_session}"
+                else:
+                    return f"未找到会话: {target_session}。可用会话: {', '.join(sessions)}"
+            else:
+                sessions = self.list_available_sessions()
+                return f"请指定要切换的会话ID。可用会话: {', '.join(sessions)}"
+        
+        if "查看会话" in query_lower or "会话列表" in query_lower:
+            sessions = self.list_available_sessions()
+            if sessions:
+                return f"当前会话ID: {self.session_id}\n可用会话列表:\n" + "\n".join(sessions)
+            else:
+                return "暂无保存的会话"
+        
+        if "当前会话" in query_lower:
+            return f"当前会话ID: {self.session_id}"
+        
+        return None
+    
     def _should_reflect(self, query: str, answer: str) -> bool:
         """判断是否需要进行反思（优化：减少不必要的反思）"""
         # 只在包含关键信息类型时进行反思
@@ -220,7 +308,16 @@ class ReActAgentV3:
         return False
     
     def _retrieve_long_term(self, query: str) -> List[Dict[str, Any]]:
-        """检索相关长期记忆（带关键词过滤、阈值过滤和冲突检测）"""
+        """检索相关长期记忆（基于向量语义匹配）
+        
+        现代RAG系统的工作方式：
+        1. 将用户查询转换为向量
+        2. 在向量数据库中进行余弦相似度检索
+        3. 返回最相关的记忆作为上下文
+        4. LLM自动利用这些上下文生成回答
+        
+        关键词：向量嵌入、余弦相似度、语义检索、上下文注入
+        """
         if not self.use_long_term:
             return []
         
@@ -228,20 +325,13 @@ class ReActAgentV3:
         if self.long_memory is None:
             return []
         
-        # 关键词前置过滤：根据查询内容确定需要检索的记忆类别
-        relevant_categories = self._get_relevant_categories(query)
-        
+        # 核心：向量语义检索（已经在long_memory.retrieve中完成）
+        # 向量检索会自动计算查询与记忆的语义相似度
         results = self.long_memory.retrieve(query, top_k=self.ltm_max_facts * 3)
         
-        # 应用关键词过滤：只保留与查询相关的记忆
-        filtered = self._filter_by_keywords(query, results)
-        
-        # 应用类别过滤
-        if relevant_categories:
-            filtered = [r for r in filtered if r.get('category', 'fact') in relevant_categories]
-        
-        # 应用可信度阈值过滤（提高阈值，只保留高相关结果）
-        filtered = [r for r in filtered if r.get('score', 0) >= self.ltm_threshold]
+        # 应用阈值过滤（只保留相似度足够高的记忆）
+        # 这里的分数是相似度（0-1），而非距离
+        filtered = [r for r in results if r.get('score', 0) >= self.ltm_threshold]
         
         # 冲突检测：移除矛盾的事实
         final_facts = self._detect_conflicts(filtered)
@@ -249,7 +339,7 @@ class ReActAgentV3:
         # 限制数量并格式化
         facts = []
         for r in final_facts[:self.ltm_max_facts]:
-            text = r['text'][:100]  # 截断过长内容
+            text = r['text'][:100]
             facts.append({
                 "text": text, 
                 "category": r.get('category', 'fact'), 
@@ -350,52 +440,16 @@ class ReActAgentV3:
         return relevant
     
     def _filter_by_keywords(self, query: str, facts: List[Dict]) -> List[Dict]:
-        """关键词过滤：只保留与查询相关的记忆"""
-        if not facts:
-            return []
+        """语义过滤：现代RAG系统的简化实现
         
-        query_lower = query.lower()
+        在真正的LLM系统中，这个函数几乎不需要存在，因为：
+        1. 向量检索已经完成了精确的语义匹配
+        2. LLM会自动根据上下文判断哪些记忆相关
+        3. 只有在特殊业务场景下才需要额外过滤
         
-        # 提取查询中的关键词
-        query_keywords = []
-        
-        # 数字相关
-        import re
-        numbers = re.findall(r'\d+', query)
-        query_keywords.extend(numbers)
-        
-        # 年份
-        years = re.findall(r'\d{4}', query)
-        query_keywords.extend(years)
-        
-        # 名词关键词
-        noun_keywords = ['csv', '图表', 'matplotlib', '销售额', '数据', '表格', '绘制', 
-                        '名字', '姓名', '年龄', '生日', '工作', '公司', '喜欢', '爱好']
-        for keyword in noun_keywords:
-            if keyword in query_lower:
-                query_keywords.append(keyword)
-        
-        # 如果查询没有特殊关键词，不过滤（保持向后兼容）
-        if not query_keywords:
-            return facts
-        
-        # 过滤：只保留包含至少一个查询关键词的事实
-        filtered = []
-        for fact in facts:
-            fact_text = fact.get('text', '').lower()
-            matched = False
-            
-            # 检查是否有匹配的关键词
-            for keyword in query_keywords:
-                if keyword.lower() in fact_text:
-                    matched = True
-                    break
-            
-            # 如果没有匹配且是身份类记忆，跳过（避免无关的身份信息干扰）
-            if matched or fact.get('category') != 'identity':
-                filtered.append(fact)
-        
-        return filtered
+        这里保留空实现保持兼容性，实际过滤已在_retrieve_long_term中完成
+        """
+        return facts
     
     def _do_reflection(self, final_answer: str):
         """执行反思，提取并保存长期记忆（带去重）"""
@@ -437,19 +491,21 @@ class ReActAgentV3:
         else:
             long_term_content = "无"
         
-        # 精简的system prompt
-        system_content = f"""你是一个智能助手。
+        # 更明确的system prompt，告诉模型如何使用记忆
+        system_content = f"""你是一个智能助手，擅长利用记忆回答用户问题。
 
-【已知信息】
+【用户记忆信息】
 {long_term_content}
 
 【会话历史】
 {short_facts if short_facts else '无'}
 
-规则：
-1. 优先使用已知信息回答
-2. 简单计算直接心算
-3. 回答简洁"""
+## 重要指令：
+1. 仔细阅读【用户记忆信息】，这是关于用户的重要个人信息
+2. 当用户问"我是谁？"、"我的名字？"、"我的生日？"等问题时，必须从【用户记忆信息】中查找答案
+3. 如果记忆中有相关信息，必须使用记忆中的信息回答，不能说不知道
+4. 如果记忆中没有相关信息，可以说"我还不知道"或询问用户
+5. 回答要自然、友好，像聊天一样"""
 
         messages = [{"role": "system", "content": system_content}]
         
@@ -476,12 +532,13 @@ class ReActAgentV3:
     def get_memory_debug(self) -> str:
         """获取记忆调试信息"""
         short = self.short_memory.get_full_summary()
+        session_info = f"\n【会话ID】{self.session_id}"
         if self.use_long_term and self.long_memory:
             profile = self.long_memory.get_user_profile()
-            long_summary = f"\n【长期记忆画像】\n偏好: {profile['preference'][:50]}...\n事实: {profile['fact'][:50]}..."
+            long_summary = f"\n【长期记忆画像】\n身份: {str(profile['identity'])[:50]}...\n偏好: {str(profile['preference'])[:50]}...\n事实: {str(profile['fact'])[:50]}..."
         else:
             long_summary = "\n【长期记忆】已关闭"
-        return short + long_summary
+        return session_info + short + long_summary
     
     def clear_short_memory(self):
         """清空短期记忆（新会话开始）"""
