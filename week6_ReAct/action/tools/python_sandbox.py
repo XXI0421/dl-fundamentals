@@ -185,6 +185,14 @@ def python_sandbox(code: str, generate_chart: bool = False, timeout: int = 10) -
     if generate_chart and 'savefig' not in code:
         code += "\n\nimport matplotlib.pyplot as plt\nplt.savefig('chart.png', dpi=150, bbox_inches='tight')"
     
+    # 自动添加打印最后一行表达式的逻辑（如果最后一行不是print语句）
+    lines = code.strip().split('\n')
+    if lines:
+        last_line = lines[-1].strip()
+        # 如果最后一行不是以 'print(' 或 'return' 开头，自动添加 print
+        if last_line and not last_line.startswith('print(') and not last_line.startswith('return'):
+            code += f"\nprint({last_line})"
+    
     result = sandbox.execute(code, save_artifacts=generate_chart)
     
     output_lines = []
