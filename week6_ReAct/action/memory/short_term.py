@@ -38,6 +38,10 @@ class ConversationBufferWindowMemory:
                 entry["name"] = msg.name
             result.append(entry)
         return result
+    
+    def clear(self):
+        """清空所有消息"""
+        self.messages.clear()
 
 class ConversationSummaryMemory(ConversationBufferWindowMemory):
     def __init__(self, k: int = 3, summarizer_llm=None, content_limit: int = 500, tool_result_limit: int = 300):
