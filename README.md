@@ -11,6 +11,7 @@
 | [Week 3](./week3_improved/README.md) | Transformer改进 | KV-Cache、RoPE、量化 | ⭐⭐⭐ |
 | [Week 4](./week4_mingpt/README.md) | 字符级语言模型 | GPT、LLaMA优化、生成 | ⭐⭐⭐ |
 | [Week 5](./week5_rag/README.md) | RAG检索系统 | HNSW、HyDE、Cross-Encoder | ⭐⭐⭐⭐ |
+| [Week 6](./week6_ReAct/README.md) | ReAct多工具Agent | 工具调用、错误恢复、会话记忆 | ⭐⭐⭐⭐⭐ |
 
 ## 🗺️ 学习路径
 
@@ -25,6 +26,8 @@ Week 4: 完整项目
     ↓ 实现字符级GPT
 Week 5: RAG系统
     ↓ 构建智能检索和问答系统
+Week 6: ReAct Agent
+    ↓ 构建多工具协作智能代理
 ```
 
 ## 📁 项目结构
@@ -66,6 +69,18 @@ dl_fundamentals/
 │   ├── vector_db_benchmark.py # 向量数据库基准测试
 │   └── README.md
 │
+├── week6_ReAct/            # ReAct多工具Agent
+│   ├── action/             # 主代码目录
+│   │   ├── react_agent_v4.py # MultiToolAgent
+│   │   ├── llm_client.py   # Kimi API客户端
+│   │   ├── tools/          # 工具目录
+│   │   │   ├── base.py     # 工具注册表
+│   │   │   ├── real_tools.py # 实用工具
+│   │   │   └── python_sandbox.py # 安全代码沙箱
+│   │   └── final_demo.py   # 最终演示程序
+│   ├── understand/         # 理解部分
+│   └── README.md
+│
 └── README.md              # 本文件
 ```
 
@@ -102,6 +117,9 @@ cd week4_mingpt && python projects/chargpt/chargpt_im.py
 
 # Week 5: 启动RAG系统
 cd week5_rag/rag_system && streamlit run app.py
+
+# Week 6: 启动ReAct Agent
+cd week6_ReAct/action && python final_demo.py
 ```
 
 ## 📊 各Week核心成果
@@ -135,6 +153,15 @@ cd week5_rag/rag_system && streamlit run app.py
 - ✅ 基于检索结果的回答生成
 - ✅ Streamlit用户友好界面
 
+### Week 6: ReAct多工具Agent
+- ✅ 多工具协作Agent架构
+- ✅ 安全代码沙箱(进程级隔离)
+- ✅ 工具调用重试机制(指数退避)
+- ✅ 无效JSON自动修正
+- ✅ 会话记忆系统(短期+长期+反思)
+- ✅ 网络请求控制(多模式支持)
+- ✅ 文件读写操作支持
+
 ## 🔧 环境要求
 
 | 组件 | 版本 | 用途 |
@@ -145,14 +172,17 @@ cd week5_rag/rag_system && streamlit run app.py
 | transformers | 4.40+ | Week 3量化实战 |
 | bitsandbytes | 0.43+ | Week 3量化实战 |
 | streamlit | 1.30+ | Week 5前端界面 |
-| faiss-cpu | 1.8+ | Week 5向量检索 |
-| sentence-transformers | 2.7+ | Week 5嵌入模型 |
+| faiss-cpu | 1.8+ | Week 5/6向量检索 |
+| sentence-transformers | 2.7+ | Week 5/6嵌入模型 |
 | pypdf | 4.0+ | Week 5 PDF解析 |
-| requests | 2.30+ | Week 5 Kimi API调用 |
+| requests | 2.30+ | Week 5/6 API调用 |
+| matplotlib | 3.8+ | Week 6图表生成 |
+| numpy | 1.26+ | Week 6数据分析 |
+| pandas | 2.2+ | Week 6数据分析 |
 
 ## 💡 学习建议
 
-1. **按顺序学习**: Week 1→2→3→4→5，循序渐进
+1. **按顺序学习**: Week 1→2→3→4→5→6，循序渐进
 2. **动手实践**: 每个模块都有可运行的代码
 3. **阅读源码**: 理解实现细节比调API更重要
 4. **修改实验**: 尝试修改参数、添加功能
@@ -163,6 +193,7 @@ cd week5_rag/rag_system && streamlit run app.py
 - [Attention Is All You Need](https://arxiv.org/abs/1706.03762) - Transformer原论文
 - [RoFormer](https://arxiv.org/abs/2104.09864) - RoPE位置编码
 - [LLaMA](https://arxiv.org/abs/2302.13971) - 开源大模型
+- [ReAct: Synergizing Reasoning and Acting](https://arxiv.org/abs/2210.03629) - ReAct范式
 
 ### 博客
 - [The Illustrated Transformer](https://jalammar.github.io/illustrated-transformer/)
@@ -171,6 +202,7 @@ cd week5_rag/rag_system && streamlit run app.py
 
 ## 📝 更新日志
 
+- **2026.04.15**: Week 6 完成，实现ReAct多工具协作Agent
 - **2026.04.10**: Week 5 完成，实现RAG检索系统
 - **2026.04.02**: Week 4 完成，实现LLaMA风格优化
 - **2026.03.29**: Week 3 完成，添加KV-Cache和RoPE
