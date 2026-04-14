@@ -1,6 +1,7 @@
 # tools/real_tools.py
 import requests
 import json
+import os
 from typing import Optional
 from .base import tool
 
@@ -93,3 +94,79 @@ def master_test() -> str:
     测试
     """
     return "主人您好！"
+
+@tool
+def save_file(content: str, filename: str, directory: Optional[str] = None) -> str:
+    """
+    将内容保存到文件。适用于保存报告、图表数据、分析结果等。
+    
+    参数:
+        content: 要保存的内容（字符串）
+        filename: 文件名（如 'report.txt', 'data.json', 'chart.png'）
+        directory: 保存目录（可选，默认为当前目录）
+    
+    返回:
+        保存结果消息
+    """
+    try:
+        # 安全检查：防止路径遍历攻击
+        if '..' in filename or '/' in filename or '\\' in filename:
+            return "错误：文件名不允许包含路径分隔符"
+        
+        # 限制文件大小（最大10MB）
+        if len(content) > 10 * 1024 * 1024:
+            return f"错误：文件大小超过限制（最大10MB，当前{len(content)//1024}KB）"
+        
+        # 确定保存路径
+        if directory:
+            save_path = os.path.join(directory, filename)
+            # 确保目录存在
+            os.makedirs(directory, exist_ok=True)
+        else:
+            save_path = filename
+        
+        # 写入文件
+        with open(save_path, 'w', encoding='utf-8') as f:
+            f.write(content)
+        
+        return f"文件已成功保存到: {os.path.abspath(save_path)}"
+    
+    except Exception as e:
+        return f"保存失败：{str(e)}"
+
+@tool
+def read_file(filename: str, directory: Optional[str] = None) -> str:
+    """
+    读取文件内容。适用于读取配置文件、数据文件等。
+    
+    参数:
+        filename: 文件名
+        directory: 文件所在目录（可选）
+    
+    返回:
+        文件内容（前2000字符）
+    """
+    try:
+        if '..' in filename or '/' in filename or '\\' in filename:
+            return "错误：文件名不允许包含路径分隔符"
+        
+        if directory:
+            file_path = os.path.join(directory, filename)
+        else:
+            file_path = filename
+        
+        if not os.path.exists(file_path):
+            return f"错误：文件不存在: {file_path}"
+        
+        # 限制读取大小
+        max_size = 2000
+        with open(file_path, 'r', encoding='utf-8') as f:
+            content = f.read(max_size)
+        
+        if len(content) == max_size:
+            content += "\n\n...（文件内容已截断）"
+        
+        return content
+    
+    except Exception as e:
+        return f"读取失败：{str(e)}"
