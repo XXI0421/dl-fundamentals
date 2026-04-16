@@ -129,6 +129,8 @@ class MultiToolAgent:
         
         # 已保存的事实（用于去重）
         self.saved_facts_cache = set()
+        # 反思判断缓存（避免重复判断相似对话）
+        self._reflect_decision_cache = {}  # hash -> decision
     
     def _lazy_init_long_memory(self):
         """延迟初始化长期记忆"""
@@ -632,9 +634,15 @@ class MultiToolAgent:
         
         通过调用LLM分析对话内容，判断是否包含值得长期保存的信息。
         相比硬编码关键词，这种方式更灵活、更准确。
+        
+        性能优化：
+        1. 最小长度阈值：总字符数<20直接返回False
+        2. 关键词优先：匹配到关键词直接返回True，不调用LLM
+        3. 缓存机制：相同对话内容直接返回缓存结果
         """
-        # 最小长度检查
-        if len(query) < 5 and len(answer) < 5:
+        # 最小长度检查：总字符数<20直接跳过（避免无意义的短对话）
+        total_length = len(query) + len(answer)
+        if total_length < 20:
             return False
         
         # 快速检查：排除简单问候和命令
@@ -644,7 +652,7 @@ class MultiToolAgent:
             if pattern in query_lower:
                 return False
         
-        # 优先检查明确的关键词（提高准确性）
+        # 优先检查明确的关键词（提高准确性，避免调用LLM）
         key_patterns = ["姓名", "名字", "叫", "出生", "生日", "年龄", "职业", "工作", 
                        "喜欢", "偏好", "擅长", "邮箱", "电话", "改名", "记忆"]
         for pattern in key_patterns:
@@ -652,7 +660,14 @@ class MultiToolAgent:
                 print(f"[反思判断] 匹配关键词 '{pattern}'，触发反思")
                 return True
         
-        # 使用LLM判断是否有值得保存的信息
+        # 缓存检查：避免重复判断相似对话
+        cache_key = hash((query[:100], answer[:100]))
+        if cache_key in self._reflect_decision_cache:
+            cached_result = self._reflect_decision_cache[cache_key]
+            print(f"[反思判断] 使用缓存结果: {cached_result}")
+            return cached_result
+        
+        # 仅在关键词匹配失败且通过所有快速检查后，才使用LLM判断
         prompt = f"""分析以下对话是否包含值得长期保存的信息：
 
 用户问题：{query}
@@ -674,9 +689,14 @@ Agent回答：{answer}
             response = self.llm.generate(prompt)
             result = "YES" in response.upper()
             print(f"[反思判断] LLM判断结果: {result}")
+            
+            # 缓存结果（限制缓存大小，避免内存溢出）
+            if len(self._reflect_decision_cache) < 100:
+                self._reflect_decision_cache[cache_key] = result
+            
             return result
         except Exception as e:
-            print(f"[反思判断] LLM调用失败，回退到关键词匹配: {e}")
+            print(f"[反思判断] LLM调用失败，回退到False: {e}")
             return False
     
     def _retrieve_long_term(self, query: str) -> List[Dict[str, Any]]:
