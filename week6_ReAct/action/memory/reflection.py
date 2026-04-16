@@ -18,7 +18,12 @@ class ReflectionEngine:
     def __init__(self, llm_client: KimiClient, session_id: Optional[str] = None):
         self.llm = llm_client
         self.session_id = session_id
-        self.ltm = get_long_term_memory(session_id=session_id)
+        self.ltm = None  # 延迟初始化
+    
+    def _lazy_init_ltm(self):
+        """延迟初始化长期记忆，避免重复创建索引"""
+        if self.ltm is None:
+            self.ltm = get_long_term_memory(session_id=self.session_id)
     
     def reflect(self, 
                 conversation_history: List[Dict], 
@@ -30,6 +35,9 @@ class ReflectionEngine:
             conversation_history: 本轮完整对话历史
             current_facts: 当前短期记忆中的事实字符串
         """
+        # 延迟初始化长期记忆
+        self._lazy_init_ltm()
+        
         # 构建反思 Prompt
         dialog_text = self._format_dialog(conversation_history)
         
@@ -48,8 +56,10 @@ class ReflectionEngine:
 任务：
 1. 识别用户提到的永久信息（姓名、生日、年龄、职业、偏好、重要结论等）
 2. 排除临时计算结果（如"2026-30=1996"这种计算过程，只保留"出生于1996"）
-3. 如果知道用户姓名，所有事实都要使用真实姓名（如"张三出生于1996年"，不要用"用户"）
-4. 为每个事实标注类别：
+3. 如果用户明确说了新名字（如"我改名了"、"我现在叫"），使用新名字更新记忆
+4. 如果用户明确指定了要保存的内容（如"请保存XX"、"改为XX"），尊重用户的表述
+5. 如果知道用户姓名，所有事实都要使用真实姓名（如"张三出生于1996年"，不要用"用户"）
+6. 为每个事实标注类别：
    - identity: 身份信息（姓名、生日、年龄等）
    - fact: 客观事实（职业、工作单位等）
    - preference: 偏好爱好
@@ -117,12 +127,15 @@ class ReflectionEngine:
                 if match:
                     return match.group(1)
         
-        # 从长期记忆中查找
-        profile = self.ltm.get_user_profile()
-        for fact in profile["fact"]:
-            match = re.search(r'^([\u4e00-\u9fa5]{2,4})\s', fact)
-            if match:
-                return match.group(1)
+        # 从长期记忆中查找（先确保已初始化）
+        if self.ltm is None:
+            self._lazy_init_ltm()
+        if self.ltm:
+            profile = self.ltm.get_user_profile()
+            for fact in profile["fact"]:
+                match = re.search(r'^([\u4e00-\u9fa5]{2,4})\s', fact)
+                if match:
+                    return match.group(1)
         
         return ""
     

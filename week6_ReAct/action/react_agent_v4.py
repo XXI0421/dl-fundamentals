@@ -612,24 +612,72 @@ class MultiToolAgent:
             else:
                 return "暂无保存的会话"
         
+        # 只有当用户明确询问会话信息时才响应，避免误匹配
         if "当前会话" in query_lower:
-            return f"当前会话ID: {self.session_id}"
+            # 检查是否只是询问会话信息（单独提问或作为主要意图）
+            # 排除包含其他内容的情况，如"保存到当前会话"
+            # 只有当"当前会话"是主要意图时才响应
+            if query_lower == "当前会话" or \
+               query_lower.startswith("当前会话") and len(query_lower) < 15 or \
+               "当前会话是什么" in query_lower or \
+               "当前会话id" in query_lower or \
+               "当前会话id是" in query_lower:
+                return f"当前会话ID: {self.session_id}"
         
         return None
     
     def _should_reflect(self, query: str, answer: str) -> bool:
-        """判断是否需要进行反思"""
-        key_patterns = ["出生", "生日", "年龄", "姓名", "职业", "工作", 
-                       "喜欢", "偏好", "擅长", "邮箱", "电话"]
+        """
+        判断是否需要进行反思（使用LLM自主决定）
         
+        通过调用LLM分析对话内容，判断是否包含值得长期保存的信息。
+        相比硬编码关键词，这种方式更灵活、更准确。
+        """
+        # 最小长度检查
+        if len(query) < 5 and len(answer) < 5:
+            return False
+        
+        # 快速检查：排除简单问候和命令
+        simple_patterns = ["你好", "hello", "hi", "谢谢", "再见", "谢谢", "q", "n", "ls", "help", "info"]
+        query_lower = query.lower()
+        for pattern in simple_patterns:
+            if pattern in query_lower:
+                return False
+        
+        # 优先检查明确的关键词（提高准确性）
+        key_patterns = ["姓名", "名字", "叫", "出生", "生日", "年龄", "职业", "工作", 
+                       "喜欢", "偏好", "擅长", "邮箱", "电话", "改名", "记忆"]
         for pattern in key_patterns:
             if pattern in query or pattern in answer:
+                print(f"[反思判断] 匹配关键词 '{pattern}'，触发反思")
                 return True
         
-        if "计算" in query or "统计" in query or "分析" in query:
-            return True
+        # 使用LLM判断是否有值得保存的信息
+        prompt = f"""分析以下对话是否包含值得长期保存的信息：
+
+用户问题：{query}
+Agent回答：{answer}
+
+请判断这段对话是否包含以下类型的信息：
+- 身份信息（姓名、生日、年龄、性别等）
+- 职业信息（工作、职位、公司等）
+- 偏好爱好（喜欢的事物、习惯等）
+- 重要事实（联系方式、地址、关键日期等）
+- 长期目标或计划
+
+如果包含以上任何类型的信息，请回答 YES；否则回答 NO。
+
+只需要回答 YES 或 NO，不要添加其他内容。
+"""
         
-        return False
+        try:
+            response = self.llm.generate(prompt)
+            result = "YES" in response.upper()
+            print(f"[反思判断] LLM判断结果: {result}")
+            return result
+        except Exception as e:
+            print(f"[反思判断] LLM调用失败，回退到关键词匹配: {e}")
+            return False
     
     def _retrieve_long_term(self, query: str) -> List[Dict[str, Any]]:
         """检索相关长期记忆（基于向量语义匹配）"""
@@ -731,48 +779,79 @@ class MultiToolAgent:
             print(f"\n[反思] 保存 {len(result.facts)} 条新的长期记忆")
             for fact in result.facts:
                 print(f"  - {fact['text'][:50]} [{fact['category']}]")
-        else:
-            print(f"\n[反思] 无需保存")
     
     def _build_messages(self, long_term_facts: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
         """构建上下文消息"""
         short_facts = self.short_memory.get_summary()
         
-        # 构建长期记忆部分
+        # 构建长期记忆部分（结构化格式，便于LLM理解）
         if long_term_facts:
-            high_confidence = [f for f in long_term_facts if f['score'] >= 0.4]
-            if high_confidence:
-                long_term_content = "\n".join([f"- {f['text']}" for f in high_confidence])
-            else:
-                long_term_content = "\n".join([f"- {f['text']}" for f in long_term_facts[:2]])
+            # 按类别分组显示记忆
+            categories = {}
+            for fact in long_term_facts:
+                cat = fact.get('category', 'fact')
+                if cat not in categories:
+                    categories[cat] = []
+                categories[cat].append(fact)
+            
+            long_term_parts = []
+            for cat_name, cat_facts in categories.items():
+                cat_label = {
+                    'identity': '身份信息',
+                    'fact': '客观事实',
+                    'preference': '偏好爱好',
+                    'relationship': '人际关系',
+                    'general': '其他信息'
+                }.get(cat_name, cat_name)
+                
+                fact_lines = [f"  - {f['text']} (相似度: {f['score']:.2f})" for f in cat_facts]
+                if fact_lines:
+                    long_term_parts.append(f"【{cat_label}】")
+                    long_term_parts.extend(fact_lines)
+            
+            long_term_content = "\n".join(long_term_parts)
         else:
-            long_term_content = "无"
+            long_term_content = "暂无长期记忆"
         
-        # 获取可用工具列表
-        available_tools = ", ".join(self.tools.list_tools())
+        # 获取可用工具列表（带描述）
+        tool_descriptions = []
+        for tool_name in self.tools.list_tools():
+            tool_obj = self.tools.get_tool(tool_name)
+            if tool_obj:
+                desc = tool_obj.description
+                tool_descriptions.append(f"- {tool_name}: {desc}")
+        tools_content = "\n".join(tool_descriptions)
         
-        # System Prompt
-        system_content = f"""你是一个智能助手，擅长利用工具和记忆完成复杂任务。
+        # System Prompt（优化版）
+        system_content = f"""你是一个具有长期记忆能力的智能助手。
 
-【可用工具】
-{available_tools}
+=== 核心指令 ===
+1. 【必须优先使用记忆】在回答任何问题前，先检查【用户记忆信息】中是否有相关内容
+2. 【记忆匹配规则】如果用户问题与记忆中的信息相关（如询问身份、偏好、历史信息），必须使用记忆中的信息回答，不得编造
+3. 【记忆缺失处理】如果记忆中没有相关信息，明确告知用户"我不记得了"或"我需要了解更多"，不要猜测
 
-【用户记忆信息】
+=== 可用工具 ===
+{tools_content}
+
+=== 用户记忆信息（重要！）===
 {long_term_content}
 
-【会话历史】
-{short_facts if short_facts else '无'}
+=== 会话历史摘要 ===
+{short_facts if short_facts else '无会话历史'}
 
-## 重要指令：
-1. 如果需要实时信息或数据，使用 search_duckduckgo 或 python_sandbox 工具
-2. 如果需要计算或数据分析，使用 python_sandbox 工具执行Python代码
-3. 如果需要保存结果，使用 save_file 工具
-4. 仔细阅读【用户记忆信息】，这是关于用户的重要个人信息
-5. 当用户问"我是谁？"、"我的名字？"等问题时，必须从【用户记忆信息】中查找答案
-6. 如果记忆中有相关信息，必须使用记忆中的信息回答
-7. 工具调用失败时会自动重试，请确保参数格式正确（JSON格式）
-8. 如果工具调用返回错误，分析错误原因并尝试修复后重新调用
-9. 回答要自然、友好，像聊天一样"""
+=== 工具使用规则 ===
+- 需要实时数据或搜索：使用 search_duckduckgo
+- 需要数学计算或数据分析：使用 python_sandbox
+- 需要保存结果：使用 save_file
+- 需要读取文件：使用 read_file
+
+=== 关键提醒 ===
+- 如果用户问"我是谁？"、"我的名字是什么？"、"我多大了？"等问题，必须从【用户记忆信息】中查找答案
+- 如果记忆中有关于用户的信息（如姓名、年龄、职业等），回答时要自然地引用这些信息
+- 工具调用参数必须是有效的JSON格式
+- 保持回答自然友好，像日常聊天一样
+
+请开始回答用户的问题。"""
 
         messages = [{"role": "system", "content": system_content}]
         

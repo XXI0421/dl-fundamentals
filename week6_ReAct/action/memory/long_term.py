@@ -58,6 +58,10 @@ class LongTermMemory:
             self.index.hnsw.efSearch = 16
             print(f"[LTM] 为会话 {self.session_id} 创建新的长期记忆索引")
     
+    def get_fact_count(self):
+        """获取事实数量（用于调试）"""
+        return self.index.ntotal if hasattr(self, 'index') else 0
+    
     def _load_metadata(self):
         """加载事实元数据"""
         meta_file = self.index_path / "facts.json"
