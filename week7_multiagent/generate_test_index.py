@@ -3,7 +3,7 @@
 """
 import shutil
 from pathlib import Path
-from memory_system import get_long_term_memory, LongTermMemory
+from memory.long_term import get_long_term_memory, LongTermMemory, _sessions
 
 
 def reset_storage():
@@ -12,9 +12,8 @@ def reset_storage():
     if storage.exists():
         shutil.rmtree(storage)
     
-    # 重置单例状态
-    LongTermMemory._instance = None
-    LongTermMemory._initialized = False
+    # 重置全局会话缓存
+    _sessions.clear()
 
 
 def generate_test_facts():
@@ -58,13 +57,13 @@ def generate_test_facts():
         ltm.add_fact(
             text=fact["text"],
             category=fact["category"],
-            importance=fact["importance"],
-            agent_id="test_generator"
+            importance=fact["importance"]
         )
     
     print(f"\n✅ 测试索引生成完成！")
     print(f"   总事实数: {ltm.get_fact_count()}")
     print(f"   存储位置: ./long_term_memory")
+    print(f"   会话ID: {ltm.session_id}")
     
     return ltm
 
