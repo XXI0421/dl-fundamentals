@@ -45,11 +45,16 @@ def save_file(filename: str, content: str) -> str:
     保存内容到文件
     
     Args:
-        filename: 文件名（支持相对路径）
+        filename: 文件名（仅支持纯文件名，不支持路径）
     """
     try:
-        # 安全清理文件名（允许路径分隔符）
-        safe_filename = "".join(c for c in filename if c.isalnum() or c in "._-/\\").strip()
+        # 安全清理：只保留字母数字和少量特殊字符，防止路径遍历攻击
+        # 首先使用 basename 获取纯文件名，去除路径信息
+        base_name = os.path.basename(filename)
+        
+        # 过滤非法字符，只允许字母、数字、下划线、点和连字符
+        safe_filename = "".join(c for c in base_name if c.isalnum() or c in "._-").strip()
+        
         if not safe_filename:
             safe_filename = "output.txt"
         
@@ -57,14 +62,8 @@ def save_file(filename: str, content: str) -> str:
         output_dir = Path(os.environ.get('OUTPUT_DIR', './output'))
         output_dir.mkdir(exist_ok=True)
         
-        # 如果文件名已经包含 output/ 前缀，直接使用
-        if safe_filename.startswith('output/') or safe_filename.startswith('output\\'):
-            full_path = Path(safe_filename)
-        else:
-            full_path = output_dir / safe_filename
-        
-        # 确保父目录存在
-        full_path.parent.mkdir(exist_ok=True)
+        # 始终使用 output 目录，防止路径遍历攻击
+        full_path = output_dir / safe_filename
         
         with open(full_path, 'w', encoding='utf-8') as f:
             f.write(content)

@@ -81,152 +81,77 @@ class ReActAgent:
         return tool_calls
     
     def _try_parse_xml_tool_call(self, content: str) -> List[Dict]:
-        """尝试解析XML格式的工具调用"""
-        # 方法0: 先尝试简单匹配（处理常见的正确XML格式）
-        try:
-            # 直接匹配 <function name="xxx">...</function> 模式
-            func_pattern = r'<function\s+name\s*=\s*["\']([^"\']+)["\']([\s\S]*?)</function>'
-            func_match = re.search(func_pattern, content, re.DOTALL)
-            
-            if func_match:
-                tool_name = func_match.group(1)
-                inner_content = func_match.group(2)
-                
-                # 先查找 <arguments> 标签内的内容
-                args_pattern = r'<arguments>([\s\S]*?)</arguments>'
-                args_match = re.search(args_pattern, inner_content, re.DOTALL)
-                
-                if args_match:
-                    args_content = args_match.group(1)
-                else:
-                    # 如果没有 <arguments> 标签，直接使用内部内容
-                    args_content = inner_content
-                
-                # 提取参数（在 arguments 内查找 <param>value</param> 模式）
-                arguments = {}
-                param_pattern = r'<(\w+)>([\s\S]*?)</\1>'
-                params = re.findall(param_pattern, args_content)
-                
-                for key, value in params:
-                    arguments[key.strip()] = value.strip()
-                
-                # 如果参数为空，尝试从整个内容中提取（处理不标准的格式）
-                if not arguments:
-                    params = re.findall(param_pattern, inner_content)
-                    for key, value in params:
-                        if key != 'arguments':  # 跳过 arguments 标签本身
-                            arguments[key.strip()] = value.strip()
-                
-                if arguments:
-                    self.logger.debug(f"✅ 简单匹配成功: {tool_name}")
-                    return [{"name": tool_name, "arguments": arguments}]
-        except Exception as e:
-            self.logger.debug(f"简单匹配失败: {str(e)[:20]}")
+        """解析XML格式的工具调用 - 简化版"""
+        # 清理空白字符，统一格式
+        content = content.strip()
         
-        # 方法1: 尝试解析<function>标签
+        # 方法1: 使用标准XML解析（主要方法）
         try:
-            # 先尝试不转义的原始内容
+            # 尝试解析标准XML格式
             xml_content = f"<root>{content}</root>"
             root = ET.fromstring(xml_content)
             
             tool_calls = []
-            
-            # 查找所有function标签
             for func_elem in root.findall('.//function'):
-                tool_name = func_elem.get('name', '')
+                tool_name = func_elem.get('name', '') or ''
                 
                 if not tool_name:
                     name_elem = func_elem.find('name')
-                    if name_elem is not None:
-                        tool_name = name_elem.text or ''
+                    tool_name = name_elem.text.strip() if name_elem else ''
                 
                 if not tool_name:
                     continue
                 
                 arguments = {}
-                
-                # 查找arguments标签
                 args_elem = func_elem.find('arguments')
                 if args_elem is not None:
                     for child in args_elem:
-                        arguments[child.tag] = child.text or ''
-                
-                # 对参数值中的特殊字符进行反转义
-                for key, value in arguments.items():
-                    if isinstance(value, str):
-                        arguments[key] = self._unescape_xml_special_chars(value)
-                
-                tool_calls.append({"name": tool_name, "arguments": arguments})
-            
-            return tool_calls
-        except ET.ParseError as e:
-            self.logger.warning(f"⚠️ XML解析失败: {str(e)[:30]}")
-        
-        # 方法2: 使用正则提取工具名和参数
-        try:
-            # 匹配 <function name="xxx"> 或 <function><name>xxx</name>
-            name_pattern = r'<function[^>]*name\s*=\s*["\']([^"\']+)["\']'
-            name_match = re.search(name_pattern, content)
-            
-            if not name_match:
-                name_pattern2 = r'<name>([^<]+)</name>'
-                name_match = re.search(name_pattern2, content)
-            
-            if name_match:
-                tool_name = name_match.group(1)
-                arguments = {}
-                
-                # 提取arguments中的键值对
-                args_pattern = r'<arguments>(.*?)</arguments>'
-                args_match = re.search(args_pattern, content, re.DOTALL)
-                
-                if args_match:
-                    args_content = args_match.group(1)
-                    # 匹配 <key>value</key> - 使用更稳健的方式处理多行内容
-                    param_pattern = r'<(\w+)>(.*?)</\1>'
-                    matches = re.findall(param_pattern, args_content, re.DOTALL)
-                    for key, value in matches:
-                        arguments[key.strip()] = self._unescape_xml_special_chars(value.strip())
-                
-                return [{"name": tool_name, "arguments": arguments}]
-        except Exception as e:
-            self.logger.error(f"❌ 正则解析失败: {str(e)[:30]}")
-        
-        # 方法3: 如果上述方法都失败，尝试更直接的逐参数提取（仅在arguments标签内）
-        try:
-            name_pattern = r'<function[^>]*name\s*=\s*["\']([^"\']+)["\']'
-            name_match = re.search(name_pattern, content)
-            
-            if not name_match:
-                name_pattern2 = r'<name>([^<]+)</name>'
-                name_match = re.search(name_pattern2, content)
-            
-            if name_match:
-                tool_name = name_match.group(1)
-                arguments = {}
-                
-                # 先找到arguments标签内的内容
-                args_pattern = r'<arguments>(.*?)</arguments>'
-                args_match = re.search(args_pattern, content, re.DOTALL)
-                
-                if args_match:
-                    args_content = args_match.group(1)
-                    # 只在arguments内部提取参数
-                    common_params = ['code', 'content', 'filename', 'expression', 
-                                    'mode', 'timeout', 'allow_network', 'url', 'query']
-                    
-                    for param in common_params:
-                        pattern = rf'<{param}>([\s\S]*?)</{param}>'
-                        match = re.search(pattern, args_content, re.DOTALL)
-                        if match:
-                            arguments[param] = self._unescape_xml_special_chars(match.group(1).strip())
+                        arguments[child.tag] = child.text.strip() if child.text else ''
                 
                 if arguments:
-                    return [{"name": tool_name, "arguments": arguments}]
-        except Exception as e:
-            self.logger.error(f"❌ 方法3解析失败: {str(e)[:30]}")
+                    tool_calls.append({"name": tool_name, "arguments": arguments})
+            
+            if tool_calls:
+                self.logger.debug(f"✅ XML解析成功: {[tc['name'] for tc in tool_calls]}")
+                return tool_calls
+                
+        except ET.ParseError as e:
+            self.logger.debug(f"⚠️ 标准XML解析失败，尝试正则解析: {str(e)[:20]}")
         
-        return []
+        # 方法2: 使用正则解析（后备方法）
+        return self._parse_tool_call_with_regex(content)
+    
+    def _parse_tool_call_with_regex(self, content: str) -> List[Dict]:
+        """使用正则表达式解析工具调用（后备方法）"""
+        tool_calls = []
+        
+        try:
+            # 匹配 <function name="xxx">...</function> 模式
+            func_pattern = r'<function\s+name\s*=\s*["\']([^"\']+)["\']([\s\S]*?)</function>'
+            matches = re.findall(func_pattern, content, re.DOTALL)
+            
+            for tool_name, inner_content in matches:
+                # 提取arguments内的参数
+                args_pattern = r'<arguments>([\s\S]*?)</arguments>'
+                args_match = re.search(args_pattern, inner_content, re.DOTALL)
+                args_content = args_match.group(1) if args_match else inner_content
+                
+                # 提取 <key>value</key> 形式的参数
+                param_pattern = r'<(\w+)>([\s\S]*?)</\1>'
+                params = re.findall(param_pattern, args_content)
+                
+                arguments = {key.strip(): value.strip() for key, value in params}
+                
+                if arguments:
+                    tool_calls.append({"name": tool_name, "arguments": arguments})
+            
+            if tool_calls:
+                self.logger.debug(f"✅ 正则解析成功: {[tc['name'] for tc in tool_calls]}")
+        
+        except Exception as e:
+            self.logger.debug(f"❌ 正则解析失败: {str(e)[:20]}")
+        
+        return tool_calls
     
     def _escape_xml_special_chars(self, content: str) -> str:
         """转义XML特殊字符 - 只转义标签内容，不转义标签本身"""
