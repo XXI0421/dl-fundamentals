@@ -12,6 +12,7 @@
 | [Week 4](./week4_mingpt/README.md) | 字符级语言模型 | GPT、LLaMA优化、生成 | ⭐⭐⭐ |
 | [Week 5](./week5_rag/README.md) | RAG检索系统 | HNSW、HyDE、Cross-Encoder | ⭐⭐⭐⭐ |
 | [Week 6](./week6_ReAct/README.md) | ReAct多工具Agent | 工具调用、错误恢复、会话记忆 | ⭐⭐⭐⭐⭐ |
+| [Week 7](./week7_multiagent/README.md) | 多智能体协作系统 | 消息总线、任务分配、Agent协调 | ⭐⭐⭐⭐⭐⭐ |
 
 ## 🗺️ 学习路径
 
@@ -28,6 +29,8 @@ Week 5: RAG系统
     ↓ 构建智能检索和问答系统
 Week 6: ReAct Agent
     ↓ 构建多工具协作智能代理
+Week 7: 多智能体协作
+    ↓ 构建多Agent协同系统
 ```
 
 ## 📁 项目结构
@@ -81,6 +84,26 @@ dl_fundamentals/
 │   ├── understand/         # 理解部分
 │   └── README.md
 │
+├── week7_multiagent/       # 多智能体协作系统
+│   ├── refacter/           # 主代码目录
+│   │   ├── app.py          # 应用入口
+│   │   ├── config.py       # 配置文件
+│   │   ├── llm_client.py   # Kimi API客户端
+│   │   ├── message_bus.py  # 消息总线系统
+│   │   ├── multi_agent_coordinator.py # 多智能体协调器
+│   │   ├── react_agent.py  # ReAct Agent核心
+│   │   ├── memory/         # 记忆系统
+│   │   │   ├── short_term.py # 短期记忆
+│   │   │   ├── long_term.py  # 长期记忆
+│   │   │   └── reflection.py # 反思引擎
+│   │   ├── tools/          # 工具目录
+│   │   │   ├── base.py     # 工具基类和注册表
+│   │   │   ├── logger.py   # 日志工具
+│   │   │   ├── python_sandbox.py # 安全代码沙箱
+│   │   │   └── real_tools.py # 实用工具
+│   │   └── test*.py        # 测试文件
+│   └── README.md
+│
 └── README.md              # 本文件
 ```
 
@@ -120,6 +143,9 @@ cd week5_rag/rag_system && streamlit run app.py
 
 # Week 6: 启动ReAct Agent
 cd week6_ReAct/action && python final_demo.py
+
+# Week 7: 启动多智能体协作系统
+cd week7_multiagent/refacter && streamlit run app.py
 ```
 
 ## 📊 各Week核心成果
@@ -162,6 +188,15 @@ cd week6_ReAct/action && python final_demo.py
 - ✅ 网络请求控制(多模式支持)
 - ✅ 文件读写操作支持
 
+### Week 7: 多智能体协作系统
+- ✅ 多智能体协调器架构
+- ✅ 消息总线系统(发布/订阅模式)
+- ✅ 任务分配和并行执行
+- ✅ 多Agent结果汇总
+- ✅ XML工具调用解析
+- ✅ no_run模式(脚本生成)
+- ✅ 脚本类型检测(Python/JavaScript)
+
 ## 🔧 环境要求
 
 | 组件 | 版本 | 用途 |
@@ -182,7 +217,7 @@ cd week6_ReAct/action && python final_demo.py
 
 ## 💡 学习建议
 
-1. **按顺序学习**: Week 1→2→3→4→5→6，循序渐进
+1. **按顺序学习**: Week 1→2→3→4→5→6→7，循序渐进
 2. **动手实践**: 每个模块都有可运行的代码
 3. **阅读源码**: 理解实现细节比调API更重要
 4. **修改实验**: 尝试修改参数、添加功能
@@ -202,6 +237,7 @@ cd week6_ReAct/action && python final_demo.py
 
 ## 📝 更新日志
 
+- **2026.04.22**: Week 7 完成，实现多智能体协作系统
 - **2026.04.15**: Week 6 完成，实现ReAct多工具协作Agent
 - **2026.04.10**: Week 5 完成，实现RAG检索系统
 - **2026.04.02**: Week 4 完成，实现LLaMA风格优化

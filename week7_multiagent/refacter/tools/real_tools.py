@@ -77,18 +77,22 @@ def read_file(filename: str) -> str:
     读取文件内容
     
     Args:
-        filename: 文件名
+        filename: 文件名（仅支持纯文件名，不支持路径）
     """
     try:
-        safe_filename = "".join(c for c in filename if c.isalnum() or c in "._-/\\").strip()
+        # 安全清理：只保留字母数字和少量特殊字符，防止路径遍历攻击
+        # 首先使用 basename 获取纯文件名，去除路径信息
+        base_name = os.path.basename(filename)
         
-        # 使用与save_file相同的输出目录
-        output_dir = os.environ.get('OUTPUT_DIR', './output')
-        full_path = Path(output_dir) / safe_filename
+        # 过滤非法字符，只允许字母、数字、下划线、点和连字符
+        safe_filename = "".join(c for c in base_name if c.isalnum() or c in "._-").strip()
         
-        if not full_path.exists():
-            # 尝试当前目录（向后兼容）
-            full_path = Path(safe_filename)
+        if not safe_filename:
+            return "文件名无效"
+        
+        # 始终使用 output 目录，防止路径遍历攻击
+        output_dir = Path(os.environ.get('OUTPUT_DIR', './output'))
+        full_path = output_dir / safe_filename
         
         if not full_path.exists():
             return f"文件不存在: {full_path}"

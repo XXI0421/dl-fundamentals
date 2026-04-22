@@ -97,7 +97,7 @@ class ReActAgent:
                 
                 if not tool_name:
                     name_elem = func_elem.find('name')
-                    tool_name = name_elem.text.strip() if name_elem else ''
+                    tool_name = name_elem.text.strip() if name_elem and name_elem.text else ''
                 
                 if not tool_name:
                     continue
