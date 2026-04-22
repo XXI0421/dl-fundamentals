@@ -14,9 +14,149 @@ import json
 import base64
 import signal
 import time
+import re
 from typing import Optional, Dict, Any, List
 from pathlib import Path
-from .base import tool
+from tools.base import ToolRegistry
+
+# 脚本类型检测相关函数
+def _detect_script_type(code: str) -> str:
+    """
+    检测代码类型
+    
+    返回:
+        'python': 纯Python代码
+        'javascript': 纯JavaScript代码
+        'mixed': 混合代码（Python + JavaScript）
+        'unknown': 未知类型
+    """
+    # JavaScript特征
+    js_keywords = [
+        r'\bconst\s+\w+\s*=', r'\blet\s+\w+\s*=', r'\bvar\s+\w+\s*=',
+        r'\bfunction\s+\w+\s*\(', r'=>\s*\{', r'\bclass\s+\w+\s*\{',
+        r'\bnew\s+Vue\s*\(', r'\bimport\s+\{', r'\bexport\s+default',
+        r'\brequire\s*\(', r'\.addEventListener\s*\(', r'\.querySelector',
+        r'\bdocument\.', r'\bwindow\.', r'\$(\w+|\()',
+        r'render:\s*h\s*=>\s*h\(', r'\.mount\s*\(',
+        r'\bconsole\.log\s*\(', r'\bsetTimeout\s*\(', r'\bsetInterval\s*\('
+    ]
+    
+    # Python特征
+    py_keywords = [
+        r'\bdef\s+\w+\s*\(', r'\bclass\s+\w+\s*:', r'\bimport\s+\w+',
+        r'\bfrom\s+\w+\s+import', r'\bif\s+\w+\s*:', r'\bfor\s+\w+\s+in',
+        r'\bwhile\s+\w+\s*:', r'\breturn\s+', r'\bprint\s*\(',
+        r'\bwith\s+\w+\s+as', r'\btry\s*:', r'\bexcept\s+',
+        r'\bopen\s*\(', r'\bwith open\s*\('
+    ]
+    
+    has_js = any(re.search(pattern, code) for pattern in js_keywords)
+    has_py = any(re.search(pattern, code) for pattern in py_keywords)
+    
+    if has_js and not has_py:
+        return 'javascript'
+    elif has_py and not has_js:
+        return 'python'
+    elif has_js and has_py:
+        return 'mixed'
+    else:
+        return 'unknown'
+
+
+def _save_javascript_code(code: str) -> str:
+    """将JavaScript代码保存为.js文件"""
+    output_dir = os.path.join(os.path.dirname(__file__), '..', 'output')
+    os.makedirs(output_dir, exist_ok=True)
+    
+    # 尝试从代码中提取文件名
+    filename = 'script.js'
+    # 简单尝试从代码中查找文件名
+    match = re.search(r'filename\s*[=:]\s*["\']([^"\']+\.js)["\']', code)
+    if match:
+        filename = match.group(1)
+    
+    script_path = os.path.join(output_dir, filename)
+    with open(script_path, 'w', encoding='utf-8') as f:
+        f.write(code)
+    
+    return f"JavaScript脚本已保存: {script_path}"
+
+
+def _handle_mixed_code(code: str) -> str:
+    """处理混合代码（Python + JavaScript）"""
+    output_dir = os.path.join(os.path.dirname(__file__), '..', 'output')
+    os.makedirs(output_dir, exist_ok=True)
+    
+    # 简单分离策略：按标记分离
+    # 查找常见的分隔标记
+    separators = [
+        (r'#\s*JavaScript', r'#\s*Python'),
+        (r'//\s*Python', r'//\s*JavaScript'),
+        (r'/\*\s*Python\s*\*/', r'/\*\s*JavaScript\s*\*/'),
+        (r'# Vue', r'# FastAPI'),
+        (r'// Vue', r'// FastAPI'),
+    ]
+    
+    py_code = ""
+    js_code = ""
+    
+    # 尝试按分隔符分离
+    for py_mark, js_mark in separators:
+        if re.search(py_mark, code) and re.search(js_mark, code):
+            # 找到分隔符，分离代码
+            parts = re.split(f'({py_mark}|{js_mark})', code)
+            for i, part in enumerate(parts):
+                if re.match(py_mark, part):
+                    # 下一部分是Python代码
+                    if i + 1 < len(parts):
+                        next_part = parts[i + 1]
+                        # 找到下一个分隔符
+                        end_idx = len(next_part)
+                        for other_mark in [py_mark, js_mark]:
+                            match = re.search(other_mark, next_part)
+                            if match:
+                                end_idx = min(end_idx, match.start())
+                        py_code += next_part[:end_idx]
+                elif re.match(js_mark, part):
+                    if i + 1 < len(parts):
+                        next_part = parts[i + 1]
+                        end_idx = len(next_part)
+                        for other_mark in [py_mark, js_mark]:
+                            match = re.search(other_mark, next_part)
+                            if match:
+                                end_idx = min(end_idx, match.start())
+                        js_code += next_part[:end_idx]
+            break
+    else:
+        # 没有找到分隔符，尝试简单的启发式分离
+        lines = code.split('\n')
+        for line in lines:
+            # 判断每行是Python还是JavaScript
+            if any(kw in line for kw in ['def ', 'import ', 'from ', 'print(', 'with ']):
+                py_code += line + '\n'
+            elif any(kw in line for kw in ['const ', 'let ', 'var ', 'function ', '=>', 'export ']):
+                js_code += line + '\n'
+            else:
+                # 默认添加到Python代码
+                py_code += line + '\n'
+    
+    result = []
+    
+    # 保存Python代码
+    if py_code.strip():
+        py_path = os.path.join(output_dir, 'main.py')
+        with open(py_path, 'w', encoding='utf-8') as f:
+            f.write(py_code.strip())
+        result.append(f"Python代码已保存: {py_path}")
+    
+    # 保存JavaScript代码
+    if js_code.strip():
+        js_path = os.path.join(output_dir, 'main.js')
+        with open(js_path, 'w', encoding='utf-8') as f:
+            f.write(js_code.strip())
+        result.append(f"JavaScript代码已保存: {js_path}")
+    
+    return "\n".join(result)
 
 
 class SecureSandbox:
@@ -60,7 +200,6 @@ class SecureSandbox:
         
         # 危险代码模式（正则匹配）
         self.forbidden_patterns = self._build_forbidden_patterns()
-        import re
         self.forbidden_regex = [re.compile(p, re.IGNORECASE) for p in self.forbidden_patterns]
     
     def _build_allowed_modules(self) -> List[str]:
@@ -85,7 +224,8 @@ class SecureSandbox:
             r'exec\s*\(', r'eval\s*\(', r'__import__\s*\(',
             r'\b__builtins__\b', r'\b__globals__\b', r'\b__locals__\b',
             # 系统命令执行
-            r'subprocess\.', r'os\.system', r'os\.popen',
+            r'subprocess\.Popen', r'subprocess\.call', r'subprocess\.run',
+            r'subprocess\.check_', r'os\.system', r'os\.popen',
             # 文件删除操作
             r'os\.remove', r'os\.unlink', r'os\.rmdir',
             r'shutil\.rmtree',
@@ -106,20 +246,52 @@ class SecureSandbox:
         # 如果不是full模式，禁止os模块的危险操作
         if self.mode != 'full':
             patterns.extend([
-                r'^\s*(import|from)\s+(os|sys|subprocess)',
-                r'\bimport\s+os\b', r'\bimport\s+sys\b', r'\bimport\s+subprocess\b',
-                r'os\.mkdir', r'os\.rename', r'os\.replace',
-                r'shutil\.move', r'shutil\.copy', r'shutil\.copytree',
+                r'^\s*(import|from)\s+(subprocess)',
+                r'\bimport\s+subprocess\b',
             ])
         
         return patterns
     
     def validate_code(self, code: str) -> tuple[bool, str]:
         """静态安全检查"""
+        # 检查是否包含JavaScript代码（常见JavaScript关键字）
+        js_patterns = [
+            r'\bconst\s+\w+\s*=', r'\blet\s+\w+\s*=', r'\bvar\s+\w+\s*=',
+            r'\bfunction\s+\w+\s*\(', r'=>\s*\{', r'\bclass\s+\w+\s*\{',
+            r'\bnew\s+Vue\s*\(', r'\bimport\s+\{', r'\bexport\s+default',
+            r'\brequire\s*\(', r'\.addEventListener\s*\(', r'\.querySelector',
+            r'\bdocument\.', r'\bwindow\.', r'\$(\w+|\()',
+            r'render:\s*h\s*=>\s*h\(', r'\.mount\s*\('
+        ]
+        
+        js_keywords_found = []
+        for pattern in js_patterns:
+            if re.search(pattern, code):
+                js_keywords_found.append(pattern)
+        
+        if js_keywords_found:
+            return False, f"检测到JavaScript代码！请使用Python语法编写代码。如需创建JavaScript文件，请使用Python的文件操作（如 open() 函数）将代码写入文件。"
+        
+        # 检查常见的Python语法错误模式
+        # 检查未定义变量模式（如直接使用变量而不赋值）
+        # 这是一个简单的检查，检测常见的错误模式
+        undefined_var_patterns = [
+            r'\b(fastapi_code|vue_code|script_content)\b'  # 常见的未定义变量名
+        ]
+        
+        for pattern in undefined_var_patterns:
+            if re.search(pattern, code):
+                # 检查是否有相应的赋值
+                var_name = pattern.strip(r'\b()')
+                if not re.search(rf'{var_name}\s*=', code):
+                    return False, f"检测到可能未定义的变量 '{var_name}'，请确保在使用前进行赋值。"
+        
+        # 危险代码检查
         for pattern in self.forbidden_regex:
             if pattern.search(code):
                 matched = pattern.search(code).group(0)
                 return False, f"安全拦截：检测到危险代码模式 '{matched}'"
+        
         return True, "OK"
     
     def execute(self, code: str, save_artifacts: bool = False, 
@@ -190,7 +362,9 @@ class SecureSandbox:
             if save_artifacts:
                 import shutil
                 # 获取当前脚本的目录作为输出目录
-                output_dir = Path(__file__).parent.parent  # action目录
+                output_dir = Path(__file__).parent.parent / "output"
+                output_dir.mkdir(exist_ok=True)
+                
                 for ext in ['*.png', '*.jpg', '*.jpeg', '*.pdf', '*.csv', '*.json']:
                     for file_path in temp_dir.glob(ext):
                         try:
@@ -205,7 +379,7 @@ class SecureSandbox:
                                 'name': file_path.name,
                                 'type': file_path.suffix[1:],
                                 'size': len(content),
-                                'content': base64.b64encode(content).decode('utf-8'),  # 完整内容
+                                'content': base64.b64encode(content).decode('utf-8'),
                                 'saved_path': str(output_path)
                             })
                         except Exception as e:
@@ -273,11 +447,10 @@ matplotlib.use('Agg')
         return header
 
 
-@tool
 def python_sandbox(code: str, mode: str = 'default', timeout: int = 10, 
                    allow_network: bool = False) -> str:
     """
-    在安全沙箱中执行 Python 代码。
+    在安全沙箱中执行 Python 代码或生成脚本文件。
     
     参数:
         code: Python 代码字符串
@@ -286,23 +459,47 @@ def python_sandbox(code: str, mode: str = 'default', timeout: int = 10,
             - 'data_analysis': 数据分析模式（包含 numpy, pandas）
             - 'chart': 图表模式（包含数据分析库 + 图表库）
             - 'full': 完整模式（允许所有操作，包括网络）
+            - 'no_run': 仅生成脚本文件，不执行代码
         timeout: 最大执行时间（秒，默认10秒，最大60秒）
         allow_network: 是否允许网络请求（requests），默认False
     
     返回:
-        执行结果、错误信息、或图表数据
+        执行结果、错误信息、或生成的脚本路径
     """
+    # 处理类型转换 - 参数可能是字符串形式的 'true'/'false'
+    if isinstance(allow_network, str):
+        allow_network = allow_network.lower() == 'true'
+    
+    # timeout可能是字符串
+    if isinstance(timeout, str):
+        try:
+            timeout = int(timeout)
+        except ValueError:
+            timeout = 10
+    
     timeout = min(timeout, 60)
     
     # 如果模式是full，自动允许网络
     if mode == 'full':
         allow_network = True
     
-    # 检测模式
-    if 'plt.' in code or 'matplotlib' in code or 'plotly' in code:
-        mode = 'chart'
-    elif 'pandas' in code or 'numpy' in code:
-        mode = 'data_analysis'
+    # 脚本类型检测和处理
+    detected_type = _detect_script_type(code)
+    
+    # 如果检测到JavaScript代码，将其保存为.js文件
+    if detected_type == 'javascript':
+        return _save_javascript_code(code)
+    
+    # 如果检测到混合代码（Python + JavaScript），分离并分别处理
+    if detected_type == 'mixed':
+        return _handle_mixed_code(code)
+    
+    # 检测模式（仅对Python代码）
+    if mode not in ['no_run']:
+        if 'plt.' in code or 'matplotlib' in code or 'plotly' in code:
+            mode = 'chart'
+        elif 'pandas' in code or 'numpy' in code:
+            mode = 'data_analysis'
     
     sandbox = SecureSandbox(
         timeout=timeout, 
@@ -327,15 +524,58 @@ import matplotlib.pyplot as plt
             if 'plt.' in code:
                 code += "\n\nplt.savefig('chart.png', dpi=150, bbox_inches='tight')"
     
-    # 自动添加打印最后一行表达式的逻辑
+    # 自动添加打印最后一行表达式的逻辑 - 仅对简单Python表达式生效
     lines = code.strip().split('\n')
     if lines:
         last_line = lines[-1].strip()
         if last_line and not last_line.startswith('print(') and not last_line.startswith('return'):
             if not last_line.endswith(':') and not last_line.endswith('\\'):
-                code += f"\nprint({last_line})"
+                # 检查整个代码是否包含未闭合的多行字符串
+                # 统计三引号出现次数
+                triple_single = code.count("'''")
+                triple_double = code.count('"""')
+                
+                # 如果三引号数量是奇数，说明有多行字符串未闭合
+                if triple_single % 2 != 0 or triple_double % 2 != 0:
+                    # 代码可能不完整或包含未闭合的多行字符串，不添加print
+                    pass
+                else:
+                    # 检查是否是简单表达式
+                    is_simple_expr = True
+                    
+                    # 检查最后一行是否包含字符串字面量
+                    if ("'''" in last_line or '"""' in last_line):
+                        is_simple_expr = False
+                    # 检查引号是否闭合
+                    elif last_line.count("'") % 2 != 0 or last_line.count('"') % 2 != 0:
+                        is_simple_expr = False
+                    # 检查括号是否闭合
+                    elif last_line.count('(') != last_line.count(')') or last_line.count('[') != last_line.count(']') or last_line.count('{') != last_line.count('}'):
+                        is_simple_expr = False
+                    # 检查是否是赋值语句
+                    elif '=' in last_line and not last_line.startswith('('):
+                        is_simple_expr = False
+                    # 检查是否是其他语言代码
+                    elif any(keyword in last_line for keyword in ['const', 'let', 'var', 'function', '=>', 'new Vue', 'createApp']):
+                        is_simple_expr = False
+                    
+                    if is_simple_expr:
+                        code += f"\nprint({last_line})"
     
-    result = sandbox.execute(code, save_artifacts=(mode in ['chart', 'full']))
+    import os
+    # 设置工作目录为 output 目录
+    output_dir = os.path.join(os.path.dirname(__file__), '..', 'output')
+    os.makedirs(output_dir, exist_ok=True)
+    
+    # no_run 模式：只生成脚本文件，不执行
+    if mode == 'no_run':
+        script_path = os.path.join(output_dir, 'generated_script.py')
+        with open(script_path, 'w', encoding='utf-8') as f:
+            f.write(code)
+        return f"脚本已生成（未执行）: {script_path}"
+    
+    # 执行代码，保存所有产物到 output 目录
+    result = sandbox.execute(code, save_artifacts=True, work_dir=output_dir)
     
     output_lines = []
     
@@ -375,7 +615,6 @@ import matplotlib.pyplot as plt
                 output_lines.append(f"[生成图表] {art['name']} (大小: {art['size']} bytes)")
                 if 'saved_path' in art:
                     output_lines.append(f"[保存路径] {art['saved_path']}")
-                output_lines.append(f"data:image/{art['type']};base64,{art['content']}")
     
     if not output_lines:
         return f"代码执行完成（耗时 {result['execution_time']}s），无输出"
@@ -383,22 +622,10 @@ import matplotlib.pyplot as plt
     return "\n\n".join(output_lines)
 
 
-@tool
-def calculator(expression: str, precision: int = 2) -> str:
-    """
-    安全计算器。支持数学表达式：+ - * / ** % ( ) abs round 等。
-    示例：expression="(2026 - 1956) * 12 + 100"
-    """
-    allowed_chars = set('0123456789+-*/.() **% abs round ')
-    if not all(c in allowed_chars for c in expression):
-        return "错误：表达式包含非法字符（只允许数字和数学运算符）"
-    
-    try:
-        safe_dict = {
-            "abs": abs, "round": round, "max": max, "min": min,
-            "__builtins__": None
-        }
-        result = eval(expression, safe_dict, {})
-        return f"{result:.{precision}f}"
-    except Exception as e:
-        return f"计算错误：{str(e)}"
+def init_sandbox_tools(registry: ToolRegistry):
+    """初始化沙盒工具"""
+    registry.register(
+        python_sandbox,
+        name="python_sandbox",
+        description="在安全沙箱中执行Python代码，支持数据分析、图表生成和网络请求"
+    )
