@@ -3,7 +3,7 @@
 # 输出: "格式化后的上下文字符串"
 
 # 要求：
-# 1. retriever 用 RunnableLambda 模拟，接收 {"query": ...}，返回 List[Document]
+# 1. retriever 用 RunnableLambda 模拟，接收 {"query": ...}，返回 str
 # 2. format_docs 用 RunnableLambda 包装你的手搓格式化函数
 # 3. 用 | 连接：retriever | format_docs
 # 4. 测试 chain.invoke({"query": "什么是LLM"})
