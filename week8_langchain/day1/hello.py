@@ -1,4 +1,4 @@
-# mini_chain_demo.py - LangChain 迷你链演示示例
+# hello.py - LangChain 迷你链演示示例
 # 该文件演示了如何使用 LCEL (LangChain Expression Language) 创建一个简单的翻译链
 
 # 从 langchain_core.prompts 模块导入 ChatPromptTemplate 类
