@@ -6,7 +6,6 @@ import os
 import argparse
 from langchain_openai import ChatOpenAI
 from langchain_huggingface import HuggingFaceEmbeddings
-from langchain_community.vectorstores import Chroma
 from langchain_text_splitters import RecursiveCharacterTextSplitter
 from langchain_core.prompts import ChatPromptTemplate
 from langchain_core.output_parsers import StrOutputParser
@@ -15,9 +14,12 @@ from langchain_core.documents import Document
 from langchain_classic.retrievers.multi_query import MultiQueryRetriever
 from langchain_classic.retrievers import EnsembleRetriever
 from langchain_classic.retrievers.contextual_compression import ContextualCompressionRetriever
+from langchain_classic.retrievers.document_compressors import LLMChainExtractor
+from langchain_community.vectorstores import Chroma
 from langchain_community.retrievers import BM25Retriever
 from langchain_community.document_compressors.flashrank_rerank import FlashrankRerank
 from langchain_community.document_loaders import PyPDFLoader
+import time
 
 # 步骤 A：文档加载与分割
 # 加载 data/ 目录下所有 .txt, .md, .pdf 文件
@@ -81,22 +83,36 @@ def build_vectorstore(chunks):
 # base	vectorstore.as_retriever(k=4)	无	
 # multi		MultiQueryRetriever.from_llm(...)   需要 LLM	
 # ensemble	EnsembleRetriever([bm25, vector], weights=[0.3, 0.7])   需要 BM25Retriever.from_documents(chunks)
-# compress	ContextualCompressionRetriever 套在 ensemble 外面	需要 compressor = FlashrankRerank()
+# compress	ContextualCompressionRetriever 套在 ensemble 外面	需要 compressor = LLMChainExtractor.from_llm(llm)
+# rerank	ContextualCompressionRetriever 套在 ensemble 外面	需要 compressor = FlashrankRerank(top_n=4)
 def get_retriever(strategy, vectorstore, llm, chunks):
     base = vectorstore.as_retriever(search_kwargs={"k": 4})
     if strategy == "base":
         return base
+
     elif strategy == "multi":
         return MultiQueryRetriever.from_llm(retriever=base, llm=llm)
+
     elif strategy == "ensemble":
         bm25 = BM25Retriever.from_documents(chunks)
         bm25.k = 4
         return EnsembleRetriever(retrievers=[bm25, base], weights=[0.3, 0.7])
+
     elif strategy == "compress":
+        # 召回长文档（如整页 PDF，k=3，每篇 1000+ 字）
+        base = vectorstore.as_retriever(search_kwargs={"k": 3})
+        compressor = LLMChainExtractor.from_llm(llm)  # LLM 提取相关句子
+        return ContextualCompressionRetriever(base_compressor=compressor, base_retriever=base)
+
+    elif strategy == "rerank":
+        # 先多召回（海选 10 个），再精排（取 4 个）
+        base = vectorstore.as_retriever(search_kwargs={"k": 10})
         bm25 = BM25Retriever.from_documents(chunks)
-        bm25.k = 4
+        bm25.k = 10
         ensemble = EnsembleRetriever(retrievers=[bm25, base], weights=[0.3, 0.7])
-        return ContextualCompressionRetriever(base_compressor=FlashrankRerank(), base_retriever=ensemble)
+        # Flashrank 精排：从 10 个里选最相关的 4 个
+        compressor = FlashrankRerank(top_n=4)
+        return ContextualCompressionRetriever(base_compressor=compressor, base_retriever=ensemble)
 
 # 步骤 D：LCEL 组装与观测
 # 统一 Chain:{"context": retriever | log_retrieval | format_docs, "question": RunnablePassthrough()} | prompt | llm | StrOutputParser() 
@@ -152,10 +168,14 @@ if __name__ == "__main__":
     chain = build_chain(retriever, llm, args.strategy)
 
     queries = [ # "LCEL 是什么", 
-                "怎么把组件串起来", 
-                # "RAG 和 Agent 的关系", 
+                # "怎么把组件串起来", 
+                "RAG 和 Agent 的关系", 
                 # "链条传动原理"
                 ]
     for q in queries:
         print(f"\n【问题】{q}")
-        print(f"【回答】{chain.invoke(q)}")
+        start = time.time()
+        answer = chain.invoke(q)
+        latency = time.time() - start
+        print(f"【延迟】{latency:.2f}s")
+        print(f"【回答】{answer}")

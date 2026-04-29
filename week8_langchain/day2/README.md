@@ -20,6 +20,7 @@
 | **MultiQuery** | LLM 生成同义查询并行检索 | 解决单一查询遗漏问题 |
 | **Ensemble** | BM25 + 向量检索加权融合 | 兼顾关键词和语义匹配 |
 | **ContextualCompression** | 召回后 LLM 提取关键信息 | 提升检索精度 |
+| **FlashrankRerank** | 基于 Flashrank 箾排 | 提升检索质量 |
 
 ## 文件说明
 
@@ -101,7 +102,8 @@ python generate_data.py
 | `base` | 基础向量检索 | 无 |
 | `multi` | MultiQuery 检索（LLM 生成同义查询） | 需要 LLM |
 | `ensemble` | BM25 + 向量混合检索 | 需要 BM25Retriever |
-| `compress` | Ensemble + Flashrank 精排 | 需要 flashrank |
+| `compress` | Ensemble + ContextualCompression压缩（LLM 提取关键信息）  | 需要 LLMChainExtractor |
+| `rerank` | Ensemble + Flashrank 精排 | 需要 FlashrankRerank |
 
 **运行方式：**
 ```bash
@@ -113,6 +115,7 @@ python work.py --strategy base
 python work.py --strategy multi
 python work.py --strategy ensemble
 python work.py --strategy compress
+python work.py --strategy rerank
 ```
 
 **输出示例：**
@@ -141,16 +144,17 @@ def get_retriever(strategy, vectorstore, llm, chunks):
         return base
     elif strategy == "multi":
         return MultiQueryRetriever.from_llm(retriever=base, llm=llm)
-    elif strategy == "ensemble":
-        bm25 = BM25Retriever.from_documents(chunks)
-        return EnsembleRetriever(retrievers=[bm25, base], weights=[0.3, 0.7])
     elif strategy == "compress":
+        base = vectorstore.as_retriever(search_kwargs={"k": 3})
+        compressor = LLMChainExtractor.from_llm(llm)  
+        return ContextualCompressionRetriever(base_compressor=compressor, base_retriever=base)
+    elif strategy == "rerank":
+        base = vectorstore.as_retriever(search_kwargs={"k": 10})
         bm25 = BM25Retriever.from_documents(chunks)
+        bm25.k = 10
         ensemble = EnsembleRetriever(retrievers=[bm25, base], weights=[0.3, 0.7])
-        return ContextualCompressionRetriever(
-            base_compressor=FlashrankRerank(), 
-            base_retriever=ensemble
-        )
+        compressor = FlashrankRerank(top_n=4)
+        return ContextualCompressionRetriever(base_compressor=compressor, base_retriever=ensemble)
 
 # 统一 LCEL Chain
 chain = (
