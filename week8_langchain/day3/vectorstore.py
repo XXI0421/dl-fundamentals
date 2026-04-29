@@ -1,3 +1,4 @@
+# 本文件用于创建向量数据库，参考详见 day2/work.py
 import os
 import argparse
 from langchain_openai import ChatOpenAI
@@ -65,6 +66,12 @@ def build_vectorstore(chunks):
 
 def get_retriever(strategy, vectorstore, chunks):
     base = vectorstore.as_retriever(search_kwargs={"k": 4})
+    llm = ChatOpenAI(
+        model="moonshot-v1-128k", 
+        api_key=os.getenv("KIMI_API_KEY") or "your-key", 
+        base_url="https://api.moonshot.cn/v1"
+        )
+    
     if strategy == "base":
         return base
 

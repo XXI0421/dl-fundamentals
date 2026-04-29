@@ -3,23 +3,27 @@ from langchain_openai import ChatOpenAI
 from langchain_classic.agents import create_tool_calling_agent, AgentExecutor  
 from langchain_core.prompts import ChatPromptTemplate, MessagesPlaceholder
 
+# ========== 1. 工具 ==========
 from tools import search, calculate, get_current_time
 tools = [search, calculate, get_current_time]
 
+# ========== 2. LLM ==========
 llm = ChatOpenAI(
     model="moonshot-v1-128k",
     api_key=os.getenv("KIMI_API_KEY") or "your-key",
     base_url="https://api.moonshot.cn/v1",
 )
 
+# ========== 3. Prompt ==========
 prompt = ChatPromptTemplate.from_messages([
     ("system", "你是一个智能助手，可以使用工具来回答问题。请尽量准确。"),
     MessagesPlaceholder("chat_history", optional=True),  # 对话记忆占位符
     ("human", "{input}"),
-    MessagesPlaceholder("agent_scratchpad"),  
+    MessagesPlaceholder("agent_scratchpad"),  # 这是消息列表，框架自动维护
 ])
 
 agent = create_tool_calling_agent(llm, tools, prompt=prompt)  
+# tool_calls=[{"name":"search", "args":{"query":"LCEL"}}]
 
 agent_executor = AgentExecutor(
     agent=agent,
