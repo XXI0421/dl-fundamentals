@@ -74,8 +74,14 @@ builder.add_edge("rewrite", "retrieve")
 
 # ========== 4. 编译并运行 ==========
 graph = builder.compile()
+try:
+    png_bytes = graph.get_graph().draw_mermaid_png()
+    with open("simulate_graph.png", "wb") as f:
+        f.write(png_bytes)
+    print("✅ 已生成可视化图：simulate_graph.png")
+except Exception as e:
+    print(f"⚠️ 无法生成可视化图：{e}")
 
-# ========== 5. 测试 ==========
 if __name__ == "__main__":
     # 测试 A：简单问题（应该直接结束）
     # print("=" * 40)
