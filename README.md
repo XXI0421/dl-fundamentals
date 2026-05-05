@@ -12,7 +12,8 @@
 | [Week 4](./week4_mingpt/README.md) | 字符级语言模型 | GPT、LLaMA优化、生成 | ⭐⭐⭐ |
 | [Week 5](./week5_rag/README.md) | RAG检索系统 | HNSW、HyDE、Cross-Encoder | ⭐⭐⭐⭐ |
 | [Week 6](./week6_ReAct/README.md) | ReAct多工具Agent | 工具调用、错误恢复、会话记忆 | ⭐⭐⭐⭐⭐ |
-| [Week 7](./week7_multiagent/README.md) | 多智能体协作系统 | 消息总线、任务分配、Agent协调 | ⭐⭐⭐⭐⭐⭐ |
+| [Week 7](./week7_multiagent/README.md) | 多智能体协作系统 | 消息总线、任务分配、Agent协调 | ⭐⭐⭐⭐⭐⭐⭐ |
+| [Week 8](./week8_langchain/day1/README.md) | LangChain系统入门 | LCEL RAG、工具Agent、LangGraph | ⭐⭐⭐⭐ |
 
 ## 🗺️ 学习路径
 
@@ -31,6 +32,8 @@ Week 6: ReAct Agent
     ↓ 构建多工具协作智能代理
 Week 7: 多智能体协作
     ↓ 构建多Agent协同系统
+Week 8: LangChain入门
+    ↓ 学习LCEL、工具调用和LangGraph
 ```
 
 ## 📁 项目结构
@@ -104,7 +107,27 @@ dl_fundamentals/
 │   │   └── test*.py        # 测试文件
 │   └── README.md
 │
-└── README.md              # 本文件
+└── week8_langchain/        # LangChain系统入门
+    ├── day1/               # LCEL基础
+    │   ├── lecl_rag.py     # LCEL RAG链
+    │   ├── rag.py          # 基础RAG
+    │   └── work2.py        # LCEL组合练习
+    ├── day2/               # RAG进阶
+    │   ├── improved_rag.py # 高级检索器
+    │   ├── langchain_rag.py # 完整LCEL RAG链
+    │   ├── work.py         # 可配置检索策略RAG
+    │   └── generate_data.py # 测试数据生成
+    ├── day3/               # 工具Agent
+    │   ├── tools.py        # 工具定义
+    │   ├── vectorstore.py  # 向量库工具
+    │   ├── tool_agent.py   # 基础Tool Calling Agent
+    │   ├── memory_agent.py # 带记忆的Agent
+    │   └── langchain_agent.py # 完整Agent系统
+    ├── day4/               # LangGraph RAG
+    │   ├── simulate.py     # LangGraph基础模拟
+    │   └── langgraph_rag.py # 评估循环RAG系统
+    └── README.md           # 本文件
+
 ```
 
 ## 🚀 快速开始
@@ -146,6 +169,9 @@ cd week6_ReAct/action && python final_demo.py
 
 # Week 7: 启动多智能体协作系统
 cd week7_multiagent/refacter && streamlit run app.py
+
+# Week 8: LangChain入门
+cd week8_langchain/day1 && python rag.py
 ```
 
 ## 📊 各Week核心成果
@@ -197,6 +223,14 @@ cd week7_multiagent/refacter && streamlit run app.py
 - ✅ no_run模式(脚本生成)
 - ✅ 脚本类型检测(Python/JavaScript)
 
+### Week 8: LangChain系统入门
+- ✅ LCEL声明式管道语法
+- ✅ 多种高级检索器(MultiQuery、Ensemble、ContextualCompression)
+- ✅ Tool Calling Agent架构(工具定义、AgentExecutor)
+- ✅ 对话记忆机制(BufferMemory、WindowMemory)
+- ✅ LangGraph状态机工作流
+- ✅ RAG评估循环(检索→生成→评估→重写)
+
 ## 🔧 环境要求
 
 | 组件 | 版本 | 用途 |
@@ -214,10 +248,13 @@ cd week7_multiagent/refacter && streamlit run app.py
 | matplotlib | 3.8+ | Week 6图表生成 |
 | numpy | 1.26+ | Week 6数据分析 |
 | pandas | 2.2+ | Week 6数据分析 |
+| langchain | 0.3+ | Week 8 LangChain |
+| langchain_openai | 0.2+ | Week 8 API集成 |
+| langgraph | 0.2+ | Week 8状态机 |
 
 ## 💡 学习建议
 
-1. **按顺序学习**: Week 1→2→3→4→5→6→7，循序渐进
+1. **按顺序学习**: Week 1→2→3→4→5→6→7→8，循序渐进
 2. **动手实践**: 每个模块都有可运行的代码
 3. **阅读源码**: 理解实现细节比调API更重要
 4. **修改实验**: 尝试修改参数、添加功能
@@ -237,6 +274,7 @@ cd week7_multiagent/refacter && streamlit run app.py
 
 ## 📝 更新日志
 
+- **2026.04.28**: Week 8 完成，实现LangChain LCEL、工具Agent和LangGraph系统
 - **2026.04.22**: Week 7 完成，实现多智能体协作系统
 - **2026.04.15**: Week 6 完成，实现ReAct多工具协作Agent
 - **2026.04.10**: Week 5 完成，实现RAG检索系统

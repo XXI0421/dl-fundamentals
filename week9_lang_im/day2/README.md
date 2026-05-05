@@ -2,13 +2,13 @@
 
 ## 概述
 
-本目录包含 LangGraph 的高级特性教学材料：Checkpointer 状态持久化和 Time Travel 时间旅行。通过这些特性，可以实现复杂的人机协同工作流，支持在任意节点暂停、恢复和修改历史状态。
+本目录包含 LangGraph 的高级特性教学材料：Checkpointer 状态持久化、Time Travel 时间旅行和 Parallel 并行执行。通过这些特性，可以实现复杂的人机协同工作流，支持在任意节点暂停、恢复、修改历史状态以及并行处理。
 
 **学习路径（递进关系）：**
 ```
-Day 1 (simulate.py)  →  Day 2 (checkpointing + time travel)
-     ↓                          ↓
- 手动状态传递              自动状态持久化
+Day 1 (simulate.py)  →  Day 2 (checkpointing + time travel + parallel)
+     ↓                          ↓                          ↓
+ 手动状态传递              自动状态持久化              并行执行
 ```
 
 ## 核心概念
@@ -123,7 +123,7 @@ python interrupt.py
 
 ---
 
-### 3. TimeTravel.py - 时间旅行示例
+### 3. timetravel.py - 时间旅行示例
 
 **功能说明：**
 - 演示 LangGraph 的 Time Travel 特性
@@ -157,7 +157,7 @@ for event in graph.stream(Command(resume="修改_增加道具系统"), config):
 
 **运行方式：**
 ```bash
-python TimeTravel.py
+python timetravel.py
 ```
 
 **输出示例：**
@@ -183,6 +183,78 @@ python TimeTravel.py
 【回滚】回到 ('architect',) 状态，修改设计后重新审批
 ============================================================
 【Architect】生成设计: [Design] 基于PRD：[PRD] Flappy Bird [回滚修改：增加道具系统]...
+```
+
+---
+
+### 4. parallel.py - 并行执行示例
+
+**功能说明：**
+- 演示 LangGraph 的 Map-Reduce 并行执行模式
+- 一个输入同时发给多个评审节点并行处理
+- 使用 `Send` 类实现条件分支的并行派发
+- 聚合阶段（Reduce）合并所有评审结果
+
+**工作流程：**
+```
+Engineer → [Send] → Security Review
+                   → Performance Review
+                   → Function Review
+                   → [Safe]（无需评审时）
+                         ↓
+                    Aggregate（汇总）
+```
+
+**核心代码：**
+
+```python
+from langgraph.types import Send
+
+class ParallelState(TypedDict):
+    code: str
+    reviews: Annotated[List[str], operator.add]  # operator.add 实现追加不覆盖
+    final_report: str
+
+def dispatch_reviewers(state: ParallelState):
+    """Map 阶段：一个输入，同时发给 3 个节点"""
+    import random
+    is_safe = random.choice([True, False])
+    if not is_safe:
+        return [
+            Send("tester_security", {"code": state["code"]}),
+            Send("tester_performance", {"code": state["code"]}),
+            Send("tester_function", {"code": state["code"]}),
+        ]
+    else:
+        return [Send("safe", {"code": state["code"], "reviews": state["reviews"], "final_report": state["final_report"]})]
+
+def aggregate_reviews(state: ParallelState):
+    """Reduce 阶段：合并所有评审意见"""
+    final = "=== 综合评审报告 ===\n" + "\n".join(state["reviews"])
+    return {"final_report": final}
+```
+
+**运行方式：**
+```bash
+python parallel.py
+```
+
+**输出示例：**
+```
+【Engineer】生成代码: [Code] import pygame; class Bird: pass...
+【Dispatch】派发 3 个并行评审任务...
+【Security】[安全评审] 代码 import pygame; class Bird... 检查：无 SQL 注入...
+【Performance】[性能评审] 代码 import pygame; class Bird... 检查：FPS 60...
+【Function】[功能评审] 代码 import pygame; class Bird... 检查：双人模式正常...
+
+============================================================
+【最终报告】
+=== 综合评审报告 ===
+[安全评审] 代码 import pygame; class Bird... 检查：无 SQL 注入...
+[性能评审] 代码 import pygame; class Bird... 检查：FPS 60...
+[功能评审] 代码 import pygame; class Bird... 检查：双人模式正常...
+============================================================
+评审总数: 3
 ```
 
 ## 环境配置
@@ -218,7 +290,7 @@ python interrupt.py
 ### 3. 运行 Time Travel 示例
 
 ```bash
-python TimeTravel.py
+python timetravel.py
 ```
 
 **说明：**
@@ -226,7 +298,20 @@ python TimeTravel.py
 - 选择任意快照回滚
 - 修改历史状态后重新执行
 
-## Checkpointer 核心概念
+### 4. 运行并行执行示例
+
+```bash
+python parallel.py
+```
+
+**说明：**
+- 演示 Map-Reduce 并行执行模式
+- 一个输入同时触发多个评审节点
+- 评审结果自动聚合
+
+## 核心概念详解
+
+### Checkpointing 核心概念
 
 ### SQLite Checkpoint
 
@@ -302,6 +387,54 @@ for event in graph.stream(Command(resume="修改内容"), config):
     print(f"Event: {event}")
 ```
 
+### 并行执行核心概念
+
+#### Map-Reduce 模式
+
+LangGraph 支持通过 `Send` 类实现 Map-Redduce 并行执行：
+
+```python
+from langgraph.types import Send
+
+def dispatch_reviewers(state: ParallelState):
+    """返回 Send 列表，实现一对多的并行派发"""
+    return [
+        Send("tester_security", {"code": state["code"]}),
+        Send("tester_performance", {"code": state["code"]}),
+        Send("tester_function", {"code": state["code"]}),
+    ]
+
+# 条件并行：根据状态决定是否并行
+def dispatch_reviewers(state: ParallelState):
+    if state.get("is_safe"):
+        return [Send("safe", {"code": state["code"], ...})]
+    return [Send("tester_security", {...}), ...]
+```
+
+#### operator.add 的作用
+
+```python
+class ParallelState(TypedDict):
+    reviews: Annotated[List[str], operator.add]  # 追加模式，不覆盖
+```
+
+#### 并行图的构建
+
+```python
+# 条件边返回 Send 列表
+builder.add_conditional_edges("engineer", dispatch_reviewers, [
+    "tester_security",
+    "tester_performance",
+    "tester_function",
+    "safe",
+])
+
+# 多个并行节点汇聚到聚合节点
+builder.add_edge("tester_security", "aggregate")
+builder.add_edge("tester_performance", "aggregate")
+builder.add_edge("tester_function", "aggregate")
+```
+
 ## 常见问题
 
 ### Q1: Checkpointer 和手动状态传递的区别？
@@ -320,12 +453,26 @@ for event in graph.stream(Command(resume="修改内容"), config):
 
 **A:** 指定从哪个节点重新开始执行。例如 `as_node="architect"` 表示从 architect 节点之后继续执行。
 
+### Q5: Send 和普通边的区别是什么？
+
+**A:** 普通边是一对一的连接；`Send` 返回列表可以实现一对多的并行派发，让多个节点同时处理同一个输入。
+
+### Q6: 如何实现条件并行？
+
+**A:** 在 `dispatch_reviewers` 函数中根据状态返回不同的 Send 列表：
+```python
+if state.get("is_safe"):
+    return [Send("safe", {...})]
+return [Send("tester_security", {...}), ...]
+```
+
 ## 学习路径
 
 1. **基础阶段**：运行 `checkpointer.py`，理解 Checkpoint 机制
 2. **进阶阶段**：运行 `interrupt.py`，理解中断控制
-3. **高级阶段**：运行 `TimeTravel.py`，理解时间旅行
-4. **实战阶段**：组合使用 Checkpoint + Interrupt + Time Travel 实现复杂工作流
+3. **高级阶段**：运行 `timetravel.py`，理解时间旅行
+4. **并行阶段**：运行 `parallel.py`，理解 Map-Reduce 并行执行
+5. **实战阶段**：组合使用所有特性实现复杂工作流
 
 ## 扩展主题
 
@@ -372,3 +519,4 @@ except Exception as e:
 - [LangGraph Checkpoint 文档](https://langchain-ai.github.io/langgraph/concepts/checkpointing/)
 - [LangGraph Time Travel 文档](https://langchain-ai.github.io/langgraph/how-tos/time-travel/)
 - [LangGraph Interrupt 文档](https://langchain-ai.github.io/langgraph/how-tos/interruption/)
+- [LangGraph Parallel 文档](https://langchain-ai.github.io/langgraph/how-tos/parallelism/)
