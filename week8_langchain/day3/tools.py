@@ -40,15 +40,20 @@ def get_current_time() -> str:
 @tool
 def python_executor(code: str) -> str:
     """执行 Python 代码。支持数据处理、网络请求和生成图表。
-    预注入：plt、requests、json、math。禁止文件读写和系统命令。"""
+    预注入：plt、requests、json、math、os、glob、pathlib、datetime、time、re。
+    禁止文件读写和系统命令。"""
     try:
         import io, contextlib, os, glob, json
 
         os.makedirs("./output", exist_ok=True)
-        for f in glob.glob("./output/*.png"):
-            os.remove(f)
 
-        _allowed = {"matplotlib", "matplotlib.pyplot", "requests", "json", "math", "numpy", "pandas", "numpy.random"}
+        _allowed = {
+            "matplotlib", "matplotlib.pyplot", 
+            "requests", "json", "math", "numpy", "pandas", 
+            "numpy.random", "os", "glob", "io", "contextlib",
+            "pathlib", "datetime", "typing", "time", "re",
+            "sys", "urllib", "urllib.request"
+        }
 
         def _safe_import(name, globals=None, locals=None, fromlist=(), level=0):
             if name in _allowed or any(name.startswith(a + ".") for a in _allowed):
@@ -68,6 +73,10 @@ def python_executor(code: str) -> str:
             "math": __import__("math"),
             "plt": __import__("matplotlib.pyplot"),
             "requests": __import__("requests"),
+            "os": __import__("os"),
+            "glob": __import__("glob"),
+            "io": __import__("io"),
+            "contextlib": __import__("contextlib"),
         }
 
         stdout = io.StringIO()
@@ -104,7 +113,7 @@ if __name__ == "__main__":
     # result = calculate.invoke("2**10")
     # print(f"计算结果：{result}") # 1024
 
-    # print("\n【测试时间时间】")
+    # print("\n【测试时间】")
     # result = get_current_time.invoke({})
     # print(f"当前时间：{result}")
 
