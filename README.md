@@ -14,6 +14,7 @@
 | [Week 6](./week6_ReAct/README.md) | ReAct多工具Agent | 工具调用、错误恢复、会话记忆 | ⭐⭐⭐⭐⭐ |
 | [Week 7](./week7_multiagent/README.md) | 多智能体协作系统 | 消息总线、任务分配、Agent协调 | ⭐⭐⭐⭐⭐⭐⭐ |
 | [Week 8](./week8_langchain/day1/README.md) | LangChain系统入门 | LCEL RAG、工具Agent、LangGraph | ⭐⭐⭐⭐ |
+| [Week 9](./week9_lang_im/day1/README.md) | LangGraph高级特性 | Checkpoint、TimeTravel、并行执行、人工干预 | ⭐⭐⭐⭐⭐ |
 
 ## 🗺️ 学习路径
 
@@ -34,6 +35,8 @@ Week 7: 多智能体协作
     ↓ 构建多Agent协同系统
 Week 8: LangChain入门
     ↓ 学习LCEL、工具调用和LangGraph
+Week 9: LangGraph高级特性
+    ↓ 掌握Checkpoint、TimeTravel、并行执行和人工干预
 ```
 
 ## 📁 项目结构
@@ -107,26 +110,50 @@ dl_fundamentals/
 │   │   └── test*.py        # 测试文件
 │   └── README.md
 │
-└── week8_langchain/        # LangChain系统入门
-    ├── day1/               # LCEL基础
-    │   ├── lecl_rag.py     # LCEL RAG链
-    │   ├── rag.py          # 基础RAG
-    │   └── work2.py        # LCEL组合练习
-    ├── day2/               # RAG进阶
-    │   ├── improved_rag.py # 高级检索器
-    │   ├── langchain_rag.py # 完整LCEL RAG链
-    │   ├── work.py         # 可配置检索策略RAG
-    │   └── generate_data.py # 测试数据生成
-    ├── day3/               # 工具Agent
-    │   ├── tools.py        # 工具定义
-    │   ├── vectorstore.py  # 向量库工具
-    │   ├── tool_agent.py   # 基础Tool Calling Agent
-    │   ├── memory_agent.py # 带记忆的Agent
-    │   └── langchain_agent.py # 完整Agent系统
-    ├── day4/               # LangGraph RAG
-    │   ├── simulate.py     # LangGraph基础模拟
-    │   └── langgraph_rag.py # 评估循环RAG系统
-    └── README.md           # 本文件
+├── week8_langchain/        # LangChain系统入门
+    │   ├── day1/           # LCEL基础
+    │   │   ├── lecl_rag.py     # LCEL RAG链
+    │   │   ├── rag.py          # 基础RAG
+    │   │   └── work2.py        # LCEL组合练习
+    │   ├── day2/           # RAG进阶
+    │   │   ├── improved_rag.py # 高级检索器
+    │   │   ├── langchain_rag.py # 完整LCEL RAG链
+    │   │   ├── work.py         # 可配置检索策略RAG
+    │   │   └── generate_data.py # 测试数据生成
+    │   ├── day3/           # 工具Agent
+    │   │   ├── tools.py        # 工具定义
+    │   │   ├── vectorstore.py  # 向量库工具
+    │   │   ├── tool_agent.py   # 基础Tool Calling Agent
+    │   │   ├── memory_agent.py # 带记忆的Agent
+    │   │   └── langchain_agent.py # 完整Agent系统
+    │   ├── day4/           # LangGraph RAG
+    │   │   ├── simulate.py     # LangGraph基础模拟
+    │   │   └── langgraph_rag.py # 评估循环RAG系统
+    │   └── README.md       # 说明文档
+    │
+    └── week9_lang_im/       # LangGraph高级特性
+        ├── day1/           # LangGraph基础
+        │   ├── simulate.py     # 状态机模拟
+        │   └── README.md       # 说明文档
+        ├── day2/           # Checkpoint与并行
+        │   ├── checkpointer.py # Checkpoint基础
+        │   ├── interrupt.py    # 中断示例
+        │   ├── timetravel.py   # 时间旅行
+        │   ├── parallel.py     # 并行执行
+        │   └── README.md       # 说明文档
+        ├── day3/           # FastAPI与SSE
+        │   ├── timetravel.py   # Time Travel示例
+        │   ├── step1.py        # FastAPI异步API
+        │   ├── step2.py        # SSE流式推送
+        │   └── README.md       # 说明文档
+        ├── day4/           # 多Agent协作与人工干预
+        │   ├── tools.py        # 工具定义
+        │   ├── vectorstore.py  # 向量数据库
+        │   ├── multi_llm.py    # 多LLM实例注册表
+        │   ├── mapreduce.py    # Map-Reduce并行评审
+        │   ├── human_gate.py   # 人工干预嫁接
+        │   └── README.md       # 说明文档
+        └── README.md       # 说明文档
 
 ```
 
@@ -172,6 +199,12 @@ cd week7_multiagent/refacter && streamlit run app.py
 
 # Week 8: LangChain入门
 cd week8_langchain/day1 && python rag.py
+
+# Week 9: LangGraph高级特性
+cd week9_lang_im/day1 && python simulate.py
+cd week9_lang_im/day2 && python checkpointer.py
+cd week9_lang_im/day3 && python step1.py
+cd week9_lang_im/day4 && python human_gate.py
 ```
 
 ## 📊 各Week核心成果
@@ -231,6 +264,15 @@ cd week8_langchain/day1 && python rag.py
 - ✅ LangGraph状态机工作流
 - ✅ RAG评估循环(检索→生成→评估→重写)
 
+### Week 9: LangGraph高级特性
+- ✅ Checkpoint状态持久化(SQLite/MemorySaver)
+- ✅ Time Travel时间旅行(历史回溯、状态修改、重新执行)
+- ✅ Parallel并行执行(Map-Reduce模式、Send类)
+- ✅ Interrupt中断机制(暂停、恢复、Command(resume))
+- ✅ 多LLM实例注册表(角色分工、独立参数配置)
+- ✅ 人工干预嫁接(human_gate节点、决策路由)
+- ✅ FastAPI异步API+SSE流式推送
+
 ## 🔧 环境要求
 
 | 组件 | 版本 | 用途 |
@@ -250,11 +292,15 @@ cd week8_langchain/day1 && python rag.py
 | pandas | 2.2+ | Week 6数据分析 |
 | langchain | 0.3+ | Week 8 LangChain |
 | langchain_openai | 0.2+ | Week 8 API集成 |
-| langgraph | 0.2+ | Week 8状态机 |
+| langgraph | 0.2+ | Week 8/9状态机 |
+| langgraph-checkpoint | 0.2+ | Week 9 Checkpoint |
+| fastapi | 0.110+ | Week 9 API服务 |
+| uvicorn | 0.29+ | Week 9 ASGI服务器 |
+| sse-starlette | 2.1+ | Week 9 SSE流式推送 |
 
 ## 💡 学习建议
 
-1. **按顺序学习**: Week 1→2→3→4→5→6→7→8，循序渐进
+1. **按顺序学习**: Week 1→2→3→4→5→6→7→8→9，循序渐进
 2. **动手实践**: 每个模块都有可运行的代码
 3. **阅读源码**: 理解实现细节比调API更重要
 4. **修改实验**: 尝试修改参数、添加功能
@@ -274,6 +320,7 @@ cd week8_langchain/day1 && python rag.py
 
 ## 📝 更新日志
 
+- **2026.05.07**: Week 9 完成，实现LangGraph高级特性(Checkpoint、TimeTravel、并行执行、人工干预)
 - **2026.04.28**: Week 8 完成，实现LangChain LCEL、工具Agent和LangGraph系统
 - **2026.04.22**: Week 7 完成，实现多智能体协作系统
 - **2026.04.15**: Week 6 完成，实现ReAct多工具协作Agent
